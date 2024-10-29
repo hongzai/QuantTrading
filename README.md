@@ -1,5 +1,7 @@
 # Quant Trading Bot
-This project contains crypto quant strategy with cybotrade.
+This project contains code to optimize crypto quant strategy.
+
+Recommended IDE: Visual Studio Code
 
 
 ### Setup Environment
@@ -14,3 +16,12 @@ pip install -r requirements.txt
 # Add current project directory to python path 
 conda env config vars set PYTHONPATH=.
 ```
+
+
+### How to Run
+```bash
+# Run optimization
+python 'Path of main.py'
+```
+
+* Result can be found in the output folder
