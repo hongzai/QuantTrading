@@ -1,8 +1,7 @@
-# Quant Trading Bot
+# Quant Trading Optimizer
 This project contains code to optimize crypto quant strategy.
 
-Recommended IDE: Visual Studio Code
-
+### Recommended IDE: Visual Studio Code
 
 ### Setup Environment
 ```bash
