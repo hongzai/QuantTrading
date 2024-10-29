@@ -28,7 +28,7 @@ class Optimization():
     trading_strategy = None
     model = None
     export_file_name = ""
-    trading_fee = 0.0   # Don't support trading fee for version 2
+    trading_fee = 0.0
     time_frame = ""
     output_folder = ""
     is_export_csv = None
@@ -41,8 +41,9 @@ class Optimization():
                  alpha_column_name: str, rolling_windows: list, diff_thresholds: list, 
                  trading_strategy: TradingStrategyEnum, coin: str, time_frame: str, model: ModelEnum,
                  output_folder: str,
+                 trading_fee: decimal = 0.00055,
                  exchange: str = None, 
-                 export_file_name: str="SR_Heatmap", is_export_csv: bool=True, is_export_chart: bool=True):
+                 export_file_name: str="SR_Heatmap", is_export_all_csv: bool=True, is_export_all_chart: bool=True):
         self.rolling_windows = rolling_windows
         self.diff_thresholds = diff_thresholds
         self.trading_strategy = trading_strategy
@@ -51,8 +52,9 @@ class Optimization():
         self.exchange = exchange
         self.time_frame = time_frame
         self.model = model
-        self.is_export_csv = is_export_csv
-        self.is_export_chart = is_export_chart
+        self.trading_fee = trading_fee
+        self.is_export_csv = is_export_all_csv
+        self.is_export_chart = is_export_all_chart
         self.alpha_column_name = alpha_column_name
 
         # Prepare folder
@@ -80,6 +82,11 @@ class Optimization():
         total_simulation = len(self.rolling_windows) * len(self.diff_thresholds)
         current_simulation = 0
         
+        best_sharpe_ratio = -np.inf
+        best_data = None
+        best_rolling_window = None
+        best_diff_threshold = None
+        
         # Iterate through each combination of rolling_window and diff_threshold
         for rolling_window in self.rolling_windows:
             for diff_threshold in self.diff_thresholds:
@@ -95,6 +102,13 @@ class Optimization():
                     mdds.loc[rolling_window, diff_threshold] = mdd
                     cumu_pnls.loc[rolling_window, diff_threshold] = cumu_pnl
 
+                    if not self.is_export_chart and sharpe_ratio > best_sharpe_ratio:
+                        print(f"[{self.__class__.__name__}] Detected BEST simulation for RW={rolling_window} and DT={diff_threshold}")
+                        best_sharpe_ratio = sharpe_ratio
+                        best_data = data.copy()
+                        best_rolling_window = rolling_window
+                        best_diff_threshold = diff_threshold
+                        
                 except Exception as e:
                     sharpe_ratios.loc[rolling_window, diff_threshold] = np.nan
                     print(f"Error for rolling_window={rolling_window} and diff_threshold={diff_threshold}: {e}")
@@ -105,6 +119,18 @@ class Optimization():
         # Plot the Sharpe ratio 3D heatmap
         self.plot_2d_heatmap(sharpe_ratios, mdds, cumu_pnls)
         
+        # Export the best simulation
+        if best_data is not None and len(self.export_file_name) > 0:
+            file_name = f"{self.export_file_name}_best_{best_rolling_window}_{best_diff_threshold}"
+
+            csv_file_path = os.path.join(self.output_folder, f"{file_name}.csv")
+            best_data.to_csv(csv_file_path, index=False)
+            print(f"[{self.__class__.__name__}] Saving BEST simulation csv to '{csv_file_path}'")
+
+            chart_file_path = os.path.join(self.output_folder, f"{file_name}.png")
+            self.export_chart(chart_file_path, best_data)
+            print(f"[{self.__class__.__name__}] Saving BEST simulation chart to '{chart_file_path}'")
+            
     def plot_2d_heatmap(self, sharpe_ratios: pd.DataFrame, mdds: pd.DataFrame, cumu_pnls: pd.DataFrame, plot_sr_only: bool = False) -> str:
         sharpe_ratio_columns = sharpe_ratios.shape[1]
 
@@ -149,10 +175,12 @@ class Optimization():
         '''
         
         # ----- Version 2 -----
+        data['trade_fee'] = self.trading_fee * data['trade']
+        
         # Only for calculating Sharpe ratio
         data.loc[rolling_window_loc:, 'close_return'] = data.loc[rolling_window_loc:, 'close'] / data.loc[rolling_window_loc:, 'close'].shift(1) - 1
         data.loc[rolling_window_loc:, 'daily_PnL'] = (data.loc[rolling_window_loc:, 'close_return'] * data.loc[rolling_window_loc:, 'position'].shift(1)) \
-                                                      - (self.trading_fee * data.loc[rolling_window_loc:, 'trade'])
+                                                      - data.loc[rolling_window_loc:, 'trade_fee']
                                                       
         # Set entry_price only when the position changes and the new position is not 0
         data['entry_price'] = np.nan
@@ -174,8 +202,8 @@ class Optimization():
         # Calculate realized PnL when the position is closed
         data['realized_PnL'] = np.where(
             (data['position'].shift(1) != 0) & (data['position'] != data['position'].shift(1)),
-            ((data['close'] - data['entry_price'].shift(1)) / data['entry_price'].shift(1) * data['position'].shift(1) ),
-            0.0
+            ((data['close'] - data['entry_price'].shift(1)) / data['entry_price'].shift(1) * data['position'].shift(1) - (data['trade_fee'])),
+            0.0 - data['trade_fee']
         )
         data['realized_PnL'] = data['realized_PnL'].cumsum()
 
