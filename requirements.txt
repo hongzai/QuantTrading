@@ -1,5 +1,4 @@
 numpy==1.26.4
-cybotrade==1.4.22
 requests==2.31.0
 binance==0.3
 pandas==2.2.2
