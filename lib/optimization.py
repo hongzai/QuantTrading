@@ -76,8 +76,8 @@ class Optimization():
 
         # Initialize a DataFrame to store the Sharpe ratios
         sharpe_ratios = pd.DataFrame(index=self.rolling_windows, columns=self.diff_thresholds)
-        mdds = pd.DataFrame(index=self.rolling_windows, columns=self.diff_thresholds)
-        cumu_pnls = pd.DataFrame(index=self.rolling_windows, columns=self.diff_thresholds)
+        mdds = pd.DataFrame(index=self.rolling_windows, columns=self.diff_thresholds)  # MDD矩阵
+        cumu_pnls = {}
         original_columns = self.data.columns
         total_simulation = len(self.rolling_windows) * len(self.diff_thresholds)
         current_simulation = 0
@@ -86,6 +86,9 @@ class Optimization():
         best_data = None
         best_rolling_window = None
         best_diff_threshold = None
+        
+        # 存储所有参数组合的资金曲线数据
+        all_portfolio_data = {}
         
         # Iterate through each combination of rolling_window and diff_threshold
         for rolling_window in self.rolling_windows:
@@ -100,7 +103,8 @@ class Optimization():
                     
                     sharpe_ratios.loc[rolling_window, diff_threshold] = sharpe_ratio
                     mdds.loc[rolling_window, diff_threshold] = mdd
-                    cumu_pnls.loc[rolling_window, diff_threshold] = cumu_pnl
+                    key = f"w{rolling_window}_t{diff_threshold}"
+                    cumu_pnls[key] = cumu_pnl
 
                     if not self.is_export_chart and sharpe_ratio > best_sharpe_ratio:
                         print(f"[{self.__class__.__name__}] Detected BEST simulation for RW={rolling_window} and DT={diff_threshold}")
@@ -109,14 +113,22 @@ class Optimization():
                         best_rolling_window = rolling_window
                         best_diff_threshold = diff_threshold
                         
+                    # 保存资金曲线数据
+                    params_key = f"Short: {rolling_window}, Long: {diff_threshold}"
+                    all_portfolio_data[params_key] = data
+
                 except Exception as e:
                     sharpe_ratios.loc[rolling_window, diff_threshold] = np.nan
                     print(f"Error for rolling_window={rolling_window} and diff_threshold={diff_threshold}: {e}")
 
         # Replace NaN values with a default value, e.g., 0
         sharpe_ratios = sharpe_ratios.astype(float).fillna(0)
+        mdds = mdds.astype(float).fillna(0)
 
-        # Plot the Sharpe ratio 3D heatmap
+        # Print best parameters
+        self._print_best_params(sharpe_ratios, mdds)
+
+        # Plot the Sharpe ratio and MDD heatmaps
         self.plot_2d_heatmap(sharpe_ratios, mdds, cumu_pnls)
         
         # Export the best simulation
@@ -131,25 +143,44 @@ class Optimization():
             self.export_chart(chart_file_path, best_data)
             print(f"[{self.__class__.__name__}] Saving BEST simulation chart to '{chart_file_path}'")
             
+        # 绘制Top 10资金曲线
+        self.plot_top_portfolio_values(all_portfolio_data)
+
     def plot_2d_heatmap(self, sharpe_ratios: pd.DataFrame, mdds: pd.DataFrame, cumu_pnls: pd.DataFrame, plot_sr_only: bool = False) -> str:
+        # 确保数据是浮点型
+        sharpe_ratios = sharpe_ratios.astype(float)
+        mdds = mdds.astype(float)
+        
         sharpe_ratio_columns = sharpe_ratios.shape[1]
 
         # Dynamically adjust font size based on the number of columns
         font_size = max(6, min(14, 22 - (sharpe_ratio_columns // 2)))
         
-        heatmap_file_path = os.path.join(self.output_folder, f"{self.export_file_name}_SR_Heatmap.png")
+        # Create figure with two subplots side by side
+        plt.figure(figsize=(24, 8))
         
-        # Plot the Sharpe ratio heatmap
-        plt.figure(figsize=(12, 8))
+        # Plot Sharpe Ratio heatmap
+        plt.subplot(1, 2, 1)
         sns.heatmap(sharpe_ratios, annot=True, annot_kws={"size": font_size}, fmt=".2f", cmap="YlGnBu")
         plt.title("Sharpe Ratio Heatmap")
         plt.xlabel("diff_threshold")
         plt.ylabel("rolling_window")
+        
+        # Plot MDD heatmap
+        plt.subplot(1, 2, 2)
+        sns.heatmap(mdds, annot=True, annot_kws={"size": font_size}, fmt=".2f", cmap="YlOrRd_r")
+        plt.title("Maximum Drawdown Heatmap")
+        plt.xlabel("diff_threshold")
+        plt.ylabel("rolling_window")
+        
+        # Save the figure
+        heatmap_file_path = os.path.join(self.output_folder, f"{self.export_file_name}_Heatmaps.png")
+        plt.tight_layout()
         plt.savefig(heatmap_file_path)
         plt.close()
         gc.collect()    # Explicit garbage collection
 
-        print(f"[{self.__class__.__name__}] Saving sharpe ratios heatmap to '{heatmap_file_path}'")
+        print(f"[{self.__class__.__name__}] Saving heatmaps to '{heatmap_file_path}'")
 
         return heatmap_file_path
 
@@ -451,4 +482,82 @@ class Optimization():
             return 365 * 24
         else:
             raise ValueError(f"[{self.__class__.__name__}] Unknown timeframe. Please configure the metric for the time frame.")
+
+    def calculate_mdd(self, cumulative_returns):
+        # 计算历史最高点
+        rolling_max = cumulative_returns.expanding().max()
+        # 计算回撤
+        drawdown = (cumulative_returns - rolling_max) / rolling_max
+        # 计算最大回撤
+        mdd = drawdown.min()
+        return abs(mdd)  # 返回正值
     # ----- End Helper -----
+
+    def _print_best_params(self, sharpe_ratios: pd.DataFrame, mdds: pd.DataFrame):
+        """
+        打印最佳参数组合
+        """
+        # 找到最佳夏普比率的参数
+        best_sr_idx = sharpe_ratios.stack().idxmax()
+        best_sr = sharpe_ratios.stack().max()
+        
+        # 找到最小MDD的参数
+        best_mdd_idx = mdds.stack().idxmin()  # 使用idxmin因为MDD越小越好
+        best_mdd = mdds.stack().min()
+        
+        print("\n" + "="*50)
+        print(f"Best Parameters for {self.coin} {self.time_frame} using {self.model.name}:")
+        print("-"*50)
+        print(f"Best Sharpe Ratio: {best_sr:.4f}")
+        print(f"Best SR Parameters: rolling_window={best_sr_idx[0]}, diff_threshold={best_sr_idx[1]}")
+        print(f"Best MDD: {best_mdd:.4f}")
+        print(f"Best MDD Parameters: rolling_window={best_mdd_idx[0]}, diff_threshold={best_mdd_idx[1]}")
+        print("="*50 + "\n")
+
+    def plot_top_portfolio_values(self, all_portfolio_data: dict, initial_capital: float = 10000):
+        """
+        绘制Top 10资金曲线
+        
+        Parameters:
+        all_portfolio_data: dict
+            键: 'Short: X, Long: Y' 格式的参数组合
+            值: 包含资金曲线数据的DataFrame
+        initial_capital: float
+            初始资金金额，默认为10000
+        """
+        plt.figure(figsize=(24, 12))
+        
+        # 获取所有资金曲线的最终值
+        final_values = {}
+        for params, data in all_portfolio_data.items():
+            # 将收益率转换为实际金额
+            final_capital = initial_capital * (1 + data['cumu_PnL'].iloc[-1])
+            final_values[params] = final_capital
+        
+        # 获取Top 10的参数组合
+        top_10_params = dict(sorted(final_values.items(), key=lambda x: x[1], reverse=True)[:10])
+        
+        # 绘制Top 10的资金曲线
+        for params in top_10_params.keys():
+            data = all_portfolio_data[params]
+            # 将收益率转换为实际金额
+            portfolio_values = initial_capital * (1 + data['cumu_PnL'])
+            plt.plot(data.index, portfolio_values, label=params)
+        
+        plt.title('Top 10 Portfolio Values Over Time')
+        plt.xlabel('Time')
+        plt.ylabel('Portfolio Value ($)')
+        plt.grid(True)
+        plt.legend()
+        
+        # 设置y轴格式为千位分隔的数字
+        plt.gca().yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: format(int(x), ',')))
+        
+        # 保存图片
+        portfolio_file_path = os.path.join(self.output_folder, f"{self.export_file_name}_top10_portfolios.png")
+        plt.tight_layout()
+        plt.savefig(portfolio_file_path)
+        plt.close()
+        gc.collect()
+        
+        print(f"[{self.__class__.__name__}] Saving top 10 portfolio chart to '{portfolio_file_path}'")

@@ -1,5 +1,6 @@
 import os
 import pandas as pd
+import numpy as np
 from lib.optimization import ModelEnum, Optimization, TradingStrategyEnum
 
 # Example usage
@@ -11,8 +12,8 @@ if __name__ == "__main__":
     time_frames = [ "1h" ]
     models = [ ModelEnum.MEAN, ModelEnum.ZSCORE ]
     trading_strategies = [ TradingStrategyEnum.LONG_SHORT_OUTRANGE_MOMEMTUM ]
-    rolling_windows = [ 100, 200, 300, 400, 500 ]
-    diff_thresholds = [ 0.1, 0.2, 0.3, 0.4, 0.5 ]
+    rolling_windows = list(range(5, 101, 5))
+    diff_thresholds = np.arange(0.2, 1.2, 0.2).tolist()
     trading_fee = 0.000 # 0.00055
     
     # Data source
