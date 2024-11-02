@@ -39,7 +39,7 @@ class Optimization():
 
     def __init__(self, data_sources: List[pd.DataFrame], data_candle: pd.DataFrame, 
                  alpha_column_name: str, rolling_windows: list, diff_thresholds: list, 
-                 trading_strategy: TradingStrategyEnum, coin: str, time_frame: str, model: ModelEnum,
+                 trading_strategy: TradingStrategyEnum, coin: str, time: int, frame: str, model: ModelEnum,
                  output_folder: str,
                  trading_fee: decimal = 0.00055,
                  exchange: str = None, 
@@ -50,7 +50,9 @@ class Optimization():
         self.export_file_name = export_file_name
         self.coin = coin
         self.exchange = exchange
-        self.time_frame = time_frame
+        self.time = time
+        self.frame = frame
+        self.time_frame = f"{time}{frame}"  
         self.model = model
         self.trading_fee = trading_fee
         self.is_export_csv = is_export_all_csv
@@ -60,7 +62,9 @@ class Optimization():
         # Prepare folder
         coin_name = self.coin if self.coin is not None else ""
         exchange_name = self.exchange if self.exchange is not None else ""
-        self.output_folder = os.path.join(output_folder, self.__class__.__name__.lower(), coin_name.lower(), exchange_name.lower(), time_frame.lower(), trading_strategy.name.lower())
+        self.output_folder = os.path.join(output_folder, self.__class__.__name__.lower(), 
+                                         coin_name.lower(), exchange_name.lower(), 
+                                         self.time_frame.lower(), trading_strategy.name.lower())
         Path(self.output_folder).mkdir(parents=True, exist_ok=True)
 
         # Merge data
@@ -78,7 +82,7 @@ class Optimization():
         sharpe_ratios = pd.DataFrame(index=self.rolling_windows, columns=self.diff_thresholds)
         mdds = pd.DataFrame(index=self.rolling_windows, columns=self.diff_thresholds)
         calmar_ratios = pd.DataFrame(index=self.rolling_windows, columns=self.diff_thresholds)
-        sortino_ratios = pd.DataFrame(index=self.rolling_windows, columns=self.diff_thresholds)  # 新增
+        sortino_ratios = pd.DataFrame(index=self.rolling_windows, columns=self.diff_thresholds)
         cumu_pnls = {}
         original_columns = self.data.columns
         total_simulation = len(self.rolling_windows) * len(self.diff_thresholds)
@@ -89,7 +93,7 @@ class Optimization():
         best_rolling_window = None
         best_diff_threshold = None
         
-        # 存储所有参数组合的资金曲线数据
+        # Store the capital curve data of all parameter combinations
         all_portfolio_data = {}
         
         # Iterate through each combination of rolling_window and diff_threshold
@@ -117,7 +121,7 @@ class Optimization():
                         best_rolling_window = rolling_window
                         best_diff_threshold = diff_threshold
                         
-                    # 保存资金曲线数据
+                   
                     params_key = f"Short: {rolling_window}, Long: {diff_threshold}"
                     all_portfolio_data[params_key] = data
 
@@ -129,7 +133,7 @@ class Optimization():
         sharpe_ratios = sharpe_ratios.astype(float).fillna(0)
         mdds = mdds.astype(float).fillna(0)
         calmar_ratios = calmar_ratios.astype(float).fillna(0)
-        sortino_ratios = sortino_ratios.astype(float).fillna(0)  # 新增
+        sortino_ratios = sortino_ratios.astype(float).fillna(0)  
 
         # Print best parameters
         #self._print_best_params(sharpe_ratios, mdds, calmar_ratios, sortino_ratios)
@@ -294,7 +298,7 @@ class Optimization():
         data.loc[0, 'AR'] = annualisedAverageReturn
         data.loc[0, 'CR'] = cumu_pnl
         data.loc[0, 'SR'] = sharpe_ratio
-        data.loc[0, 'Calmar'] = calmar_ratio  # 添加Calmar Ratio到统计信息中
+        data.loc[0, 'Calmar'] = calmar_ratio 
 
         # Export simulation results and chart to a CSV file
         if len(self.export_file_name) > 0:
@@ -506,12 +510,14 @@ class Optimization():
             df['start_time'] = pd.to_datetime(df['start_time'])
 
     def get_annual_metric(self):
-        if self.time_frame == "1d":
-            return 365
-        elif self.time_frame == "1h":
-            return 365 * 24
+        if self.frame == "d":
+            return 365/self.time
+        elif self.frame == "h":
+            return (24/self.time) * 365
+        elif self.frame == "m":
+            return ((60/self.time) * 24) * 365
         else:
-            raise ValueError(f"[{self.__class__.__name__}] Unknown timeframe. Please configure the metric for the time frame.")
+            raise ValueError(f"[{self.__class__.__name__}] Invalid timeframe. Please enter 'd', 'h', or 'm'.")
 
     def calculate_mdd(self, cumulative_returns):
         rolling_max = cumulative_returns.expanding().max()
