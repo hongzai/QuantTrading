@@ -16,7 +16,7 @@ if __name__ == "__main__":
     trading_strategies = [TradingStrategyEnum.LONG_SHORT_OUTRANGE_MOMEMTUM]
     rolling_windows = list(range(5, 101, 5))
     diff_thresholds = np.arange(0.2, 1.2, 0.2).tolist()
-    trading_fee = 0.00006 # 0.00055
+    trading_fee = 0.00055
     
     # Data source
     alpha_column_name = "coinbase_premium_gap"
