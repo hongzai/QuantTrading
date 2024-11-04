@@ -1,5 +1,6 @@
 import decimal
 from pathlib import Path
+import re
 from typing import List
 import pandas as pd
 import os
@@ -10,6 +11,9 @@ import gc
 import threading
 
 from lib.model_enum import ModelEnum
+from lib.statistic.statistic_chart import StatisticChart
+from lib.statistic.statistic_heatmap import StatisticHeatmap
+from lib.statistic.statistic_top_equity_curves import StatisticTopEquityCurves
 from lib.trading_strategy_enum import TradingStrategyEnum
 
 """
@@ -39,7 +43,7 @@ class Optimization():
 
     def __init__(self, data_sources: List[pd.DataFrame], data_candle: pd.DataFrame, 
                  alpha_column_name: str, rolling_windows: list, diff_thresholds: list, 
-                 trading_strategy: TradingStrategyEnum, coin: str, time: int, frame: str, model: ModelEnum,
+                 trading_strategy: TradingStrategyEnum, coin: str, time_frame: str, model: ModelEnum,
                  output_folder: str,
                  trading_fee: decimal = 0.00055,
                  exchange: str = None, 
@@ -50,9 +54,9 @@ class Optimization():
         self.export_file_name = export_file_name
         self.coin = coin
         self.exchange = exchange
-        self.time = time
-        self.frame = frame
-        self.time_frame = f"{time}{frame}"  
+        self.time_frame = time_frame
+        self.time = self.split_time_frame(time_frame)[0]
+        self.frame = self.split_time_frame(time_frame)[1]
         self.model = model
         self.trading_fee = trading_fee
         self.is_export_csv = is_export_all_csv
@@ -70,6 +74,11 @@ class Optimization():
         # Merge data
         self.data = self.merge_data(data_sources, data_candle)
         
+        # Statistic
+        self.heatmap = StatisticHeatmap(rolling_windows, diff_thresholds)
+        self.top_equity_curves = StatisticTopEquityCurves(rolling_windows, diff_thresholds)
+        self.statistic_chart = StatisticChart(rolling_windows, diff_thresholds)
+        
     def run(self):
         # Logging
         print(f"[{self.__class__.__name__}] Running simulation for ")
@@ -79,11 +88,6 @@ class Optimization():
         print(f"[{self.__class__.__name__}] - Trading Fee: {self.trading_fee}")
 
         # Initialize DataFrames
-        sharpe_ratios = pd.DataFrame(index=self.rolling_windows, columns=self.diff_thresholds)
-        mdds = pd.DataFrame(index=self.rolling_windows, columns=self.diff_thresholds)
-        calmar_ratios = pd.DataFrame(index=self.rolling_windows, columns=self.diff_thresholds)
-        sortino_ratios = pd.DataFrame(index=self.rolling_windows, columns=self.diff_thresholds)
-        cumu_pnls = {}
         original_columns = self.data.columns
         total_simulation = len(self.rolling_windows) * len(self.diff_thresholds)
         current_simulation = 0
@@ -93,9 +97,6 @@ class Optimization():
         best_rolling_window = None
         best_diff_threshold = None
         
-        # Store the capital curve data of all parameter combinations
-        all_portfolio_data = {}
-        
         # Iterate through each combination of rolling_window and diff_threshold
         for rolling_window in self.rolling_windows:
             for diff_threshold in self.diff_thresholds:
@@ -104,16 +105,17 @@ class Optimization():
                     current_simulation+=1
 
                     # Running simulation
-                    [sharpe_ratio, mdd, cumu_pnl, sortino_ratio, data] = self.calculate_sharpe_ratio(self.data[original_columns], rolling_window, diff_threshold)
+                    [sharpe_ratio, mdd, cumu_pnl, sortino_ratio, calmar_ratio, data] = self.calculate_sharpe_ratio(self.data[original_columns], rolling_window, diff_threshold)
                     print(f"[{self.__class__.__name__}] Running [{current_simulation}/{total_simulation}] (RW={rolling_window}, DT={diff_threshold}) SR: {sharpe_ratio}, MDD: {mdd}, cumu_pnl: {cumu_pnl}")
                     
-                    sharpe_ratios.loc[rolling_window, diff_threshold] = sharpe_ratio
-                    mdds.loc[rolling_window, diff_threshold] = mdd
-                    calmar_ratios.loc[rolling_window, diff_threshold] = data.loc[0, 'Calmar']  # 保存Calmar Ratio
-                    sortino_ratios.loc[rolling_window, diff_threshold] = sortino_ratio  # 新增
-                    key = f"w{rolling_window}_t{diff_threshold}"
-                    cumu_pnls[key] = cumu_pnl
+                    # Update heatmap statistic
+                    self.heatmap.update_statistic(rolling_window, diff_threshold, sharpe_ratio, mdd, cumu_pnl, calmar_ratio, sortino_ratio)
 
+                    # Update top equity curves statistic
+                    self.top_equity_curves.update_statistic(f"RW: {rolling_window}, DT: {diff_threshold} (SR: {round(sharpe_ratio, 2)}, MDD: {round(mdd, 2)}, CR: {round(cumu_pnl, 2)})", 
+                                                            sharpe_ratio,
+                                                            data)
+                    
                     if not self.is_export_chart and sharpe_ratio > best_sharpe_ratio:
                         print(f"[{self.__class__.__name__}] Detected BEST simulation for RW={rolling_window} and DT={diff_threshold}")
                         best_sharpe_ratio = sharpe_ratio
@@ -121,26 +123,20 @@ class Optimization():
                         best_rolling_window = rolling_window
                         best_diff_threshold = diff_threshold
                         
-                   
-                    params_key = f"Short: {rolling_window}, Long: {diff_threshold}"
-                    all_portfolio_data[params_key] = data
-
                 except Exception as e:
-                    sharpe_ratios.loc[rolling_window, diff_threshold] = np.nan
+                    self.heatmap.update_statistic(rolling_window, diff_threshold, np.nan, np.nan, np.nan, np.nan, np.nan)
                     print(f"Error for rolling_window={rolling_window} and diff_threshold={diff_threshold}: {e}")
 
-        # Replace NaN values with a default value, e.g., 0
-        sharpe_ratios = sharpe_ratios.astype(float).fillna(0)
-        mdds = mdds.astype(float).fillna(0)
-        calmar_ratios = calmar_ratios.astype(float).fillna(0)
-        sortino_ratios = sortino_ratios.astype(float).fillna(0)  
-
-        # Print best parameters
-        #self._print_best_params(sharpe_ratios, mdds, calmar_ratios, sortino_ratios)
-
-        # Plot the heatmaps
-        self.plot_2d_heatmap(sharpe_ratios, mdds, calmar_ratios, sortino_ratios, cumu_pnls)
+        # Plot heatmap
+        self.heatmap.fill_nan_statistic()
+        self.heatmap.plot_2d_heatmap(self.output_folder, self.export_file_name)
         
+        # Print best parameters
+        self.heatmap._print_best_params(self.coin, self.time_frame, self.model.name)
+        
+        # Plot top equity curve
+        self.top_equity_curves.plot_top_equity_curves(self.output_folder, self.export_file_name)
+            
         # Export the best simulation
         if best_data is not None and len(self.export_file_name) > 0:
             file_name = f"{self.export_file_name}_best_{best_rolling_window}_{best_diff_threshold}"
@@ -150,72 +146,18 @@ class Optimization():
             print(f"[{self.__class__.__name__}] Saving BEST simulation csv to '{csv_file_path}'")
 
             chart_file_path = os.path.join(self.output_folder, f"{file_name}.png")
-            self.export_chart(chart_file_path, best_data)
+            self.statistic_chart.export_chart(chart_file_path, self.alpha_column_name, best_data)
             print(f"[{self.__class__.__name__}] Saving BEST simulation chart to '{chart_file_path}'")
             
-        # Draw the Top 10 funding curve
-        self.plot_top_portfolio_values(all_portfolio_data)
-
-    def plot_2d_heatmap(self, sharpe_ratios: pd.DataFrame, mdds: pd.DataFrame, calmar_ratios: pd.DataFrame, sortino_ratios: pd.DataFrame, cumu_pnls: pd.DataFrame, plot_sr_only: bool = False) -> str:
-
-        sharpe_ratios = sharpe_ratios.astype(float)
-        mdds = mdds.astype(float)
-        calmar_ratios = calmar_ratios.astype(float)
-        sortino_ratios = sortino_ratios.astype(float)
-        
-        sharpe_ratio_columns = sharpe_ratios.shape[1]
-        font_size = max(6, min(14, 22 - (sharpe_ratio_columns // 2)))
-        
-        
-        plt.figure(figsize=(24, 16))
-        
- 
-        plt.subplot(2, 2, 1)
-        sns.heatmap(sharpe_ratios, annot=True, annot_kws={"size": font_size}, fmt=".2f", cmap="YlGnBu")
-        plt.title("Sharpe Ratio Heatmap")
-        plt.xlabel("diff_threshold")
-        plt.ylabel("rolling_window")
-        
- 
-        plt.subplot(2, 2, 2)
-        sns.heatmap(mdds, annot=True, annot_kws={"size": font_size}, fmt=".2f", cmap="YlOrRd_r")
-        plt.title("Maximum Drawdown Heatmap")
-        plt.xlabel("diff_threshold")
-        plt.ylabel("rolling_window")
-        
-
-        plt.subplot(2, 2, 3)
-        sns.heatmap(calmar_ratios, annot=True, annot_kws={"size": font_size}, fmt=".2f", cmap="RdYlGn")
-        plt.title("Calmar Ratio Heatmap")
-        plt.xlabel("diff_threshold")
-        plt.ylabel("rolling_window")
-        
-
-        plt.subplot(2, 2, 4)
-        sns.heatmap(sortino_ratios, annot=True, annot_kws={"size": font_size}, fmt=".2f", cmap="YlGnBu")
-        plt.title("Sortino Ratio Heatmap")
-        plt.xlabel("diff_threshold")
-        plt.ylabel("rolling_window")
-        
- 
-        heatmap_file_path = os.path.join(self.output_folder, f"{self.export_file_name}_Heatmaps.png")
-        plt.tight_layout()
-        plt.savefig(heatmap_file_path)
-        plt.close()
-        gc.collect()
-
-        print(f"[{self.__class__.__name__}] Saving heatmaps to '{heatmap_file_path}'")
-
-        return heatmap_file_path
 
     # Function to calculate the Sharpe ratio
     def calculate_sharpe_ratio(self, data: pd.DataFrame, rolling_window: int, diff_threshold: decimal):
-        self.alpha_handler(data, rolling_window, diff_threshold)
+        new_alpha_column_name = self.alpha_handler(data, rolling_window, diff_threshold)
 
         rolling_window_loc = rolling_window - 1
         
         # Apply the trading strategy based on the selected strategy
-        data.loc[rolling_window_loc:, 'position'] = self.trade(data[rolling_window_loc:], self.alpha_column_name)
+        data.loc[rolling_window_loc:, 'position'] = self.trade(data[rolling_window_loc:], new_alpha_column_name)
         
         # Calculate trade count, close return, daily PnL, cumulative PnL, and drawdown
         data.loc[rolling_window_loc:, 'trade'] = abs(data.loc[rolling_window_loc:, 'position'].diff())
@@ -276,11 +218,17 @@ class Optimization():
         sharpe_ratio = average_daily_returns / data['daily_PnL'].std() * np.sqrt(annual_metric)
         
         # Sortino ratio calculation
-        negative_returns = data['daily_PnL'][data['daily_PnL'] < 0]
-        downside_std = negative_returns.std() if len(negative_returns) > 0 else data['daily_PnL'].std()
-        sortino_ratio = average_daily_returns / downside_std * np.sqrt(annual_metric) if downside_std != 0 else np.inf
-        
-        annualisedAverageReturn = data['daily_PnL'].mean() * annual_metric
+        excess_returns = data['daily_PnL'] - 0  # 0 is the minimum acceptable return (MAR), Can be adjusted as needed
+        negative_excess = excess_returns[excess_returns < 0]
+
+        if len(negative_excess) > 0:
+            downside_deviation = np.sqrt(np.mean(negative_excess ** 2))
+            sortino_ratio = (average_daily_returns / downside_deviation) * np.sqrt(annual_metric)
+        else:
+            sortino_ratio = np.inf
+    
+        # Calmar ratio calculation
+        annualisedAverageReturn = average_daily_returns * annual_metric
         mdd = data['drawdown'].min()
         cumu_pnl = data['cumu_PnL'].iloc[-1]
         calmar_ratio = abs(annualisedAverageReturn / mdd) if mdd != 0 else np.inf
@@ -298,6 +246,7 @@ class Optimization():
         data.loc[0, 'AR'] = annualisedAverageReturn
         data.loc[0, 'CR'] = cumu_pnl
         data.loc[0, 'SR'] = sharpe_ratio
+        data.loc[0, 'Sortino'] = sortino_ratio 
         data.loc[0, 'Calmar'] = calmar_ratio 
 
         # Export simulation results and chart to a CSV file
@@ -314,86 +263,8 @@ class Optimization():
                 self.export_chart(file_path, data)
                 print(f"[{self.__class__.__name__}] Saving simulation chart to '{file_path}'")
 
-        return [sharpe_ratio, mdd, cumu_pnl, sortino_ratio, data]
+        return [sharpe_ratio, mdd, cumu_pnl, sortino_ratio, calmar_ratio, data]
 
-
-    def export_chart(self, file_path: str, data: pd.DataFrame):
-        # --- Process data ---
-        columns_to_convert = ['drawdown', 'position', 'close', 'cumu_PnL', self.alpha_column_name, 'SR', 'MDD', 'AR', 'CR', 'Trading Fee', 'Trade Count']
-        
-        if self.lower_threshold_col in data.columns and self.upper_threshold_col in data.columns:
-            columns_to_convert.append(self.lower_threshold_col)
-            columns_to_convert.append(self.upper_threshold_col)
-            
-        for col in columns_to_convert:
-            data[col] = pd.to_numeric(data[col], errors='coerce')
-
-        # --- Plot the close price and cumu PnL chart ---
-        fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(24, 12), gridspec_kw={'height_ratios': [2, 1, 1]})
-
-        # Add y-axis for price
-        ax1.plot(data.index, data['close'], label="Price", color='blue')
-        ax1.set_xlabel('Index')
-        ax1.set_ylabel('Close Price')
-        ax1.legend(loc='upper left')
-
-        # Add second y-axis for cumu_PnL
-        ax1_2 = ax1.twinx()
-        ax1_2.plot(data.index, data['cumu_PnL'], label='Cumu PnL', color='orange')
-        ax1_2.set_ylabel('Cumu PnL')
-        ax1_2.legend(loc='upper left', bbox_to_anchor=(0, 0.94))
-
-        ax1.set_title(file_path.replace('.png', ''))
-        ax1.grid(True)
-
-        # Add additional information as text
-        info_text = (
-            f"SR: {data['SR'].iloc[0]:.2f}\n"
-            f"MDD: {data['MDD'].iloc[0]:.2f}\n"
-            f"AR: {data['AR'].iloc[0]:.2f}\n"
-            f"CR: {data['CR'].iloc[0]:.2f}\n"
-            f"TF: {data['Trading Fee'].iloc[0]}\n"
-            f"TC: {data['Trade Count'].iloc[0]}"
-        )
-        ax1.text(0.01, 0.85, info_text, transform=ax1.transAxes, fontsize=10, verticalalignment='top', horizontalalignment='center', ha='left', bbox=dict(facecolor='white', alpha=0.5))
-
-        ax1.set_xlabel('Index')
-        ax1.set_ylabel('Close Price')
-        ax1.legend(loc='upper left')
-
-        # --- Plot the signal and threshold ---
-        if self.lower_threshold_col in data.columns and self.upper_threshold_col in data.columns:
-            ax2.plot(data.index, data[self.alpha_column_name], label=self.alpha_column_name, color='pink')
-            ax2.plot(data.index, data[self.lower_threshold_col], label='Lower Threshold', color='red')
-            ax2.plot(data.index, data[self.upper_threshold_col], label='Upper Threshold', color='green')
-            ax2.set_xlabel('Index')
-            ax2.set_ylabel('Value')
-            ax2.set_title('Alpha and Thresholds')
-            ax2.legend(loc='upper left')
-            ax2.grid(True)
-
-            # Focus on the range of lower and upper thresholds
-            mid_threshold = (abs(data[self.lower_threshold_col].min()) + abs(data[self.upper_threshold_col].max())) / 2
-            ax2.set_ylim([data[self.lower_threshold_col].min() - (mid_threshold * 2.0), data[self.upper_threshold_col].max() + (mid_threshold * 2.0)])
-
-        # --- Plot the drawdown chat ---
-        ax3.fill_between(data.index, data['drawdown'], color='red', alpha=0.5, label='Drawdown')
-        ax3.set_xlabel('Index')
-        ax3.set_ylabel('Drawdown')
-        ax3.axhline(y=data['drawdown'].mean(), color='red', linestyle='--', label='Drawdown mean')
-
-        # Legends
-        ax3.legend(loc='lower left')
-        ax3.set_title('Drawdown Over Time')
-        ax3.grid(True)
-
-        # --- Display the plot ---
-        plt.tight_layout()
-        #plt.show()
-        plt.savefig(file_path)
-        fig.clear()
-        plt.close(fig)  # Close the figure to release memory
-        gc.collect()    # Explicit garbage collection
 
     # ----- Begin Model -----
     '''
@@ -406,7 +277,7 @@ class Optimization():
             # Calculate sma for specific column
             # Create upperbound and lowerbound based on sma and diff_threshold
             # Use original column as alpha against threshold
-            mean_column_name = f'{column_name}_mean'
+            mean_column_name = f'{column_name}-mean'
             data[mean_column_name] = self.calculate_mean(data, column_name, rolling_window)
             
             # Use vectorized function to calculate thresholds
@@ -418,12 +289,24 @@ class Optimization():
             # Calculating zscore for specific column
             # Create upperbound and lowerbound based on diff_threshold
             # Use zscore as alpha against threshold
-            zscore_column_name = f'{column_name}_zscore'
+            zscore_column_name = f'{column_name}-zscore'
             data[zscore_column_name] = self.calculate_zscore(data, column_name, rolling_window)
             
             data[self.lower_threshold_col] = -diff_threshold if diff_threshold > 0 else diff_threshold * 2
             data[self.upper_threshold_col] = diff_threshold
 
+            return zscore_column_name
+        
+        elif self.model == ModelEnum.EMA:
+            # Calculating ema for specific column
+            # Create upperbound and lowerbound based on ema and diff_threshold
+            # Use original column as alpha against threshold
+            ema_column_name = f'{column_name}-ema'
+            data[ema_column_name] = self.calculate_ema(data, column_name, rolling_window)
+            
+            # Use vectorized function to calculate thresholds
+            data[self.lower_threshold_col], data[self.upper_threshold_col] = self.calculate_thresholds(data[ema_column_name], diff_threshold)
+            
             return column_name
     # ----- End Model -----
 
@@ -432,7 +315,11 @@ class Optimization():
         position = np.zeros(len(data))
         alpha_col = alpha_column_name
         
-        if self.trading_strategy == TradingStrategyEnum.LONG_ONLY:
+        if self.trading_strategy == TradingStrategyEnum.LONG_ABOVE_UPPER:
+            position[data[alpha_col] > data[self.upper_threshold_col]] = 1
+        elif self.trading_strategy == TradingStrategyEnum.SHORT_BELOW_LOWER:
+            position[data[alpha_col] < data[self.lower_threshold_col]] = -1
+        if self.trading_strategy == TradingStrategyEnum.LONG_ABOVE_UPPER:
             position[data[alpha_col] > data[self.upper_threshold_col]] = 1
         elif self.trading_strategy == TradingStrategyEnum.LONG_SHORT_OUTRANGE_MOMEMTUM:
             position[data[alpha_col] > data[self.upper_threshold_col]] = 1
@@ -477,6 +364,9 @@ class Optimization():
     
     def calculate_mean(self, data: pd.DataFrame, column_name: str, rolling_window: decimal):
         return data[column_name].rolling(rolling_window).mean()
+    
+    def calculate_ema(self, data, column_name, span):
+        return data[column_name].ewm(span=span, adjust=False).mean()
     # ----- End Model Formula-----
             
     # ----- Begin Helper -----
@@ -524,71 +414,15 @@ class Optimization():
         drawdown = (cumulative_returns - rolling_max) / rolling_max
         mdd = drawdown.min()
         return abs(mdd)
+    
+    def split_time_frame(self, time_frame: str):
+        # Use regular expression to separate numeric and alphabetic parts
+        match = re.match(r"(\d+)([a-zA-Z]+)", time_frame)
+        if match:
+            time = int(match.group(1))  # Convert to integer if needed
+            frame = match.group(2)
+            
+            return [time, frame]
+        else:
+            raise ValueError(f"[{self.__class__.__name__}] Invalid timeframe. Please enter correct format. E.g: '1d', '1h', or '1m'.")
     # ----- End Helper -----
-
-    def _print_best_params(self, sharpe_ratios: pd.DataFrame, mdds: pd.DataFrame, calmar_ratios: pd.DataFrame, sortino_ratios: pd.DataFrame):
- 
-        best_sr_idx = sharpe_ratios.stack().idxmax() 
-        best_sr = sharpe_ratios.stack().max()
-        
-        best_mdd_idx = mdds.stack().idxmin() 
-        best_mdd = mdds.stack().min()
-        
-        best_calmar_idx = calmar_ratios.stack().idxmax()
-        best_calmar = calmar_ratios.stack().max()
-        
-        best_sortino_idx = sortino_ratios.stack().idxmax() 
-        best_sortino = sortino_ratios.stack().max()
-        
-        print("\n" + "="*50)
-        print(f"Best Parameters for {self.coin} {self.time_frame} using {self.model.name}:")
-        print("-"*50)
-        print(f"Best Sharpe Ratio: {best_sr:.4f}")
-        print(f"Best SR Parameters: rolling_window={best_sr_idx[0]}, diff_threshold={best_sr_idx[1]}")
-        print(f"Best MDD: {best_mdd:.4f}")
-        print(f"Best MDD Parameters: rolling_window={best_mdd_idx[0]}, diff_threshold={best_mdd_idx[1]}")
-        print(f"Best Calmar Ratio: {best_calmar:.4f}")
-        print(f"Best Calmar Parameters: rolling_window={best_calmar_idx[0]}, diff_threshold={best_calmar_idx[1]}")
-        print(f"Best Sortino Ratio: {best_sortino:.4f}")
-        print(f"Best Sortino Parameters: rolling_window={best_sortino_idx[0]}, diff_threshold={best_sortino_idx[1]}")
-        print("="*50 + "\n")
-
-    def plot_top_portfolio_values(self, all_portfolio_data: dict, initial_capital: float = 10000):
-        """
-        Draw the Top 10 Funding Curve
-        
-        """
-        plt.figure(figsize=(24, 12))
-        
-        final_values = {}
-        for params, data in all_portfolio_data.items():
-            # Convert the yield to actual amount
-            final_capital = initial_capital * (1 + data['cumu_PnL'].iloc[-1])
-            final_values[params] = final_capital
-        
-        # Get the top 10 parameter combinations
-        top_10_params = dict(sorted(final_values.items(), key=lambda x: x[1], reverse=True)[:10])
-        
-        for params in top_10_params.keys():
-            data = all_portfolio_data[params]
-            # Convert the yield to actual amount
-            portfolio_values = initial_capital * (1 + data['cumu_PnL'])
-            plt.plot(data.index, portfolio_values, label=params)
-        
-        plt.title('Top 10 Portfolio Values Over Time')
-        plt.xlabel('Time')
-        plt.ylabel('Portfolio Value ($)')
-        plt.grid(True)
-        plt.legend()
-        
-
-        plt.gca().yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: format(int(x), ',')))
-        
-  
-        portfolio_file_path = os.path.join(self.output_folder, f"{self.export_file_name}_top10_portfolios.png")
-        plt.tight_layout()
-        plt.savefig(portfolio_file_path)
-        plt.close()
-        gc.collect()
-        
-        print(f"[{self.__class__.__name__}] Saving top 10 portfolio chart to '{portfolio_file_path}'")
