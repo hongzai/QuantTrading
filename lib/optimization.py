@@ -35,9 +35,8 @@ class Optimization():
     trading_fee = 0.0
     time_frame = ""
     output_folder = ""
-    should_export_csv = None
-    should_export_chart = None
-    export_chart = None
+    is_export_csv = None
+    is_export_chart = None
     alpha_column_name = ""
     lower_threshold_col = 'lower_threshold'
     upper_threshold_col = 'upper_threshold'
@@ -48,9 +47,7 @@ class Optimization():
                  output_folder: str,
                  trading_fee: decimal = 0.00055,
                  exchange: str = None, 
-                 export_file_name: str="SR_Heatmap", 
-                 is_export_all_csv: bool=True, 
-                 is_export_all_chart: bool=True):
+                 export_file_name: str="SR_Heatmap", is_export_all_csv: bool=True, is_export_all_chart: bool=True):
         self.rolling_windows = rolling_windows
         self.diff_thresholds = diff_thresholds
         self.trading_strategy = trading_strategy
@@ -62,9 +59,8 @@ class Optimization():
         self.frame = self.split_time_frame(time_frame)[1]
         self.model = model
         self.trading_fee = trading_fee
-        self.should_export_csv = is_export_all_csv
-        self.should_export_chart = is_export_all_chart
-        self.export_chart = is_export_all_chart
+        self.is_export_csv = is_export_all_csv
+        self.is_export_chart = is_export_all_chart
         self.alpha_column_name = alpha_column_name
 
         # Prepare folder
@@ -120,7 +116,7 @@ class Optimization():
                                                             sharpe_ratio,
                                                             data)
                     
-                    if not self.should_export_chart and sharpe_ratio > best_sharpe_ratio:
+                    if not self.is_export_chart and sharpe_ratio > best_sharpe_ratio:
                         print(f"[{self.__class__.__name__}] Detected BEST simulation for RW={rolling_window} and DT={diff_threshold}")
                         best_sharpe_ratio = sharpe_ratio
                         best_data = data.copy()
@@ -254,14 +250,18 @@ class Optimization():
         data.loc[0, 'Calmar'] = calmar_ratio 
 
         # Export simulation results and chart to a CSV file
-        if self.should_export_chart and len(self.export_file_name) > 0:
+        if len(self.export_file_name) > 0:
             file_name = f"{self.export_file_name}_{rolling_window}_{diff_threshold}"
-            self.statistic_chart.plot_chart(data, self.output_folder, file_name)
-            
-        if self.should_export_csv and len(self.export_file_name) > 0:
-            csv_file_path = os.path.join(self.output_folder, f"{file_name}.csv")
-            data.to_csv(csv_file_path, index=False)
-            print(f"[{self.__class__.__name__}] Saving simulation csv to '{csv_file_path}'")
+
+            if self.is_export_csv:
+                file_path = os.path.join(self.output_folder, f"{file_name}.csv")
+                data.to_csv(file_path, index=False)
+                print(f"[{self.__class__.__name__}] Saving simulation csv to '{file_path}'")
+
+            if self.is_export_chart:
+                file_path = os.path.join(self.output_folder, f"{file_name}.png")
+                self.export_chart(file_path, data)
+                print(f"[{self.__class__.__name__}] Saving simulation chart to '{file_path}'")
 
         return [sharpe_ratio, mdd, cumu_pnl, sortino_ratio, calmar_ratio, data]
 
