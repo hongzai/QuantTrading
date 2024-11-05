@@ -308,6 +308,24 @@ class Optimization():
             data[self.lower_threshold_col], data[self.upper_threshold_col] = self.calculate_thresholds(data[ema_column_name], diff_threshold)
             
             return column_name
+        elif self.model == ModelEnum.MINMAX:
+            # Min-Max Normalization
+            minmax_column_name = f'{column_name}-minmax'
+            data['rolling_min'] = data[column_name].rolling(rolling_window).min()
+            data['rolling_max'] = data[column_name].rolling(rolling_window).max()
+            
+            # Avoid division by zero by replacing zero differences with a small number (e.g., 1e-8)
+            range_diff = data['rolling_max'] - data['rolling_min']
+            range_diff = range_diff.replace(0, 1e-8)
+            
+            # Apply Min-Max normalization to range [-1, 1] using vectorized operations
+            data[minmax_column_name] = 2 * (data[column_name] - data['rolling_min']) / range_diff - 1
+            
+            # Min-Max thresholds typically in range [-1, 1]
+            data['lower_threshold'] = -diff_threshold if diff_threshold > 0 else diff_threshold * 2
+            data['upper_threshold'] = diff_threshold
+
+            return minmax_column_name
     # ----- End Model -----
 
     # ----- Begin trade -----

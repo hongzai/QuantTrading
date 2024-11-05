@@ -14,6 +14,7 @@ if __name__ == "__main__":
     3. EMA Crossing             = ModelEnum.EMA     -and-   diff_thresholds with 0
     4. EMA Band                 = ModelEnum.EMA     -and-   diff_thresholds with any value greater than 0
     5. ZSCORE                   = ModelEnum.ZSCORE  -and-   diff_thresholds with any value greater than 0
+    6. MINMAX                   = ModelEnum.MINMAX  -and-   diff_thresholds between -1 to 1
     '''
     # Parameters
     coins = ["BTC"]
@@ -61,7 +62,7 @@ if __name__ == "__main__":
                         alpha_column_name=alpha_column_name,
                         trading_fee=trading_fee,
                         output_folder=f"{parent_dir}/output",
-                        export_file_name=f"{alpha_column_name}_{model.name}_{alpha_column_name}_{coin.upper()}_{time_frame}",
+                        export_file_name=f"{model.name}_{alpha_column_name}_{coin.upper()}_{time_frame}",
                         is_export_all_chart=False,
                         is_export_all_csv=False)
                     optimization.run()
