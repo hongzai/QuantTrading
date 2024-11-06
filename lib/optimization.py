@@ -150,8 +150,8 @@ class Optimization():
         self.is_export_chart = is_export_all_chart
         self.alpha_column_name = alpha_column_name
         self.alpha_columns = alpha_config["columns"]
-        self.alpha_method = alpha_config["method"]
-        self.alpha_weights = alpha_config["weights"]
+        self.alpha_method = alpha_config.get("method", None)
+        self.alpha_weights = alpha_config.get("weights", None)
         
         # Prepare folder
         coin_name = self.coin if self.coin is not None else ""
@@ -162,7 +162,7 @@ class Optimization():
         Path(self.output_folder).mkdir(parents=True, exist_ok=True)
         
         self.alpha_preprocessor = AlphaPreprocessor(
-            weights=self.alpha_weights,
+            weights=self.alpha_weights if len(self.alpha_columns) > 1 else None,
             output_folder=self.output_folder
         )
 
@@ -392,17 +392,19 @@ class Optimization():
 
             return zscore_column_name
         
-        elif self.model == ModelEnum.EMA:
+        elif self.model == ModelEnum.EMA_DIFF:
             # Calculating ema for specific column
             ema_column_name = f'{column_name}-ema'
             data[ema_column_name] = self.calculate_ema(data, column_name, rolling_window)
             
-            adjusted_diff_threshold = diff_threshold * 10
+            # difference between alpha and ema
+            data['alpha_ema_diff'] = (data[column_name] - data[ema_column_name]) / data[ema_column_name]
             
-            # Use vectorized function to calculate thresholds
-            data[self.lower_threshold_col], data[self.upper_threshold_col] = self.calculate_thresholds(data[ema_column_name], adjusted_diff_threshold)
+            # set thresholds as percentage of difference
+            data[self.lower_threshold_col] = -diff_threshold
+            data[self.upper_threshold_col] = diff_threshold
             
-            return column_name
+            return 'alpha_ema_diff'
 
         elif self.model == ModelEnum.MINMAX:
             # Min-Max Scaling with rolling window
@@ -410,7 +412,7 @@ class Optimization():
 
             rolling_min = data[column_name].rolling(window=rolling_window).min()
             rolling_max = data[column_name].rolling(window=rolling_window).max()
-            
+
             # Calculate normalized values
             data[minmax_column_name] = (data[column_name] - rolling_min) / (rolling_max - rolling_min)
             
@@ -474,19 +476,63 @@ class Optimization():
             # SoftMax with rolling window
             softmax_column_name = f'{column_name}-softmax'
             
-            # Use rolling window to calculate softmax
-            def rolling_softmax(x):
-                exp_x = np.exp(x - np.max(x))  # Subtract the maximum value to improve numerical stability
-                return exp_x / exp_x.sum()
+            # Use numpy's vectorized operation
+            values = data[column_name].values
+            result = np.zeros(len(data))
             
-            data[softmax_column_name] = data[column_name].rolling(window=rolling_window).apply(
-                rolling_softmax, raw=True
-            )
+            for i in range(rolling_window - 1, len(data)):
+                window = values[i-rolling_window+1:i+1]
+                # Numerical stability processing
+                window = window - np.max(window)
+                exp_window = np.exp(window)
+                softmax = exp_window / np.sum(exp_window)
+                result[i] = softmax[-1]
+            
+            data[softmax_column_name] = result
+            # use bfill to replace fillna(method='bfill')
+            data[softmax_column_name] = data[softmax_column_name].bfill()
+            
             
             data[self.lower_threshold_col] = diff_threshold
             data[self.upper_threshold_col] = 1 - diff_threshold
             
+            print(f"[{self.__class__.__name__}] Softmax values range: {data[softmax_column_name].min():.4f} to {data[softmax_column_name].max():.4f}")
+            
             return softmax_column_name
+
+        elif self.model == ModelEnum.DOUBLE_EMA_CROSSING:
+            # Calculate long and short EMA
+            long_ema_name = f'{column_name}-long-ema'
+            short_ema_name = f'{column_name}-short-ema'
+            
+            # long_window = rolling_window
+            # short_window = diff_threshold (as integer)
+            short_window = int(diff_threshold)
+            
+            # Calculate both EMAs
+            data[long_ema_name] = self.calculate_ema(data, column_name, rolling_window)
+            data[short_ema_name] = self.calculate_ema(data, column_name, short_window)
+            
+            # Calculate the difference between short and long EMA
+            data['ema_cross'] = data[short_ema_name] - data[long_ema_name]
+            data['prev_ema_cross'] = data['ema_cross'].shift(1)
+            
+            # Set thresholds for crossing signals
+            data[self.lower_threshold_col] = np.where(
+                (data['ema_cross'] < 0) & (data['prev_ema_cross'] >= 0),  
+                -1,  
+                0 
+            )
+            
+            data[self.upper_threshold_col] = np.where(
+                (data['ema_cross'] > 0) & (data['prev_ema_cross'] <= 0),  
+                1,  
+                0 
+            )
+            
+            print(f"[{self.__class__.__name__}] Double EMA Crossing (Long={rolling_window}, Short={short_window})")
+            
+            return 'ema_cross'
     # ----- End Model -----
 
     # ----- Begin trade -----
@@ -569,12 +615,13 @@ class Optimization():
             if len(merged_data) != len(data_candle):
                 print(f"[{self.__class__.__name__}] !!! Warning: Alpha {alpha_name} and candle have different number of rows. [Candle:{len(data_candle)}, Merged: {len(merged_data)}] !!!")
         
-        # after merging, calculate combined alpha
-        merged_data['combined_alpha'] = self.alpha_preprocessor.combine_alphas(
-            merged_data, 
-            self.alpha_columns,
-            method=self.alpha_method
-        )
+        # 只有多个因子时才需要计算combined alpha
+        if len(self.alpha_columns) > 1 and self.alpha_method:
+            merged_data['combined_alpha'] = self.alpha_preprocessor.combine_alphas(
+                merged_data, 
+                self.alpha_columns,
+                method=self.alpha_method
+            )
         
         return merged_data
 

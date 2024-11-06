@@ -18,24 +18,25 @@ if __name__ == "__main__":
     # Parameters
     coins = ["BTC"]
     time_frames = ["1h"]
-    models = [ModelEnum.ZSCORE,ModelEnum.MINMAX] # ModelEnum.MEAN, ModelEnum.EMA, ModelEnum.MINMAX, ModelEnum.ROBUST, ModelEnum.MAXABS, ModelEnum.LOG, ModelEnum.SOFTMAX
+    models = [ModelEnum.DOUBLE_EMA_CROSSING] # ModelEnum ZSCORE, ModelEnum.MEAN, ModelEnum.EMA, ModelEnum.MINMAX, ModelEnum.SOFTMAX, ModelEnum.ROBUST, ModelEnum.MAXABS, ModelEnum.LOG
     trading_strategies = [TradingStrategyEnum.LONG_SHORT_OUTRANGE_MOMEMTUM]
-    rolling_windows = list(range(100, 601, 25))
-    diff_thresholds = [round(num, 2) for num in np.arange(0.2, 2.0, 0.2).tolist()]
+    rolling_windows = list(range(5, 100, 5))
+    diff_thresholds = [round(num, 2) for num in np.arange(5, 200, 5).tolist()]
     trading_fee = 0.00055 
     alpha_config = {
-        "columns": ['open_interest','coinbase_premium_gap'],
-        "method": "divide",  # "add",subtract","multiply","divide","percent_diff","log_ratio","geometric_mean","harmonic_mean"
-        "weights": [1, 1]  # 权重配置
+        "columns": ['close']
+        # ,'open_interest','coinbase_premium_gap'
+        # "method": "divide",  # "add",subtract","multiply","divide","percent_diff","log_ratio","geometric_mean","harmonic_mean"
+        # "weights": [1, 1]  # 权重配置
     }
     
     # Data source
-    alpha_column_name = "coinbase_premium_gap"
+    alpha_column_name = "close"#"coinbase_premium_gap"
     alpha_data_sources = {
         coin: {
             time_frame: {
-                "coinbase_premium_gap": os.path.join(parent_dir, "resources", f"Cryptoquant_{coin}_MarketCoinbasePremiumIndex_{time_frame}.csv"),
-                "open_interest": os.path.join(parent_dir, "resources", f"Cryptoquant_{coin}_OpenInterest_{time_frame}.csv")
+                # "coinbase_premium_gap": os.path.join(parent_dir, "resources", f"Cryptoquant_{coin}_MarketCoinbasePremiumIndex_{time_frame}.csv"),
+                # "open_interest": os.path.join(parent_dir, "resources", f"Cryptoquant_{coin}_OpenInterest_{time_frame}.csv")
             }
             for time_frame in time_frames
         }
@@ -56,8 +57,8 @@ if __name__ == "__main__":
                 for trading_strategy in trading_strategies:
                     # read multiple alpha data
                     alpha_dfs = {}
-                    for alpha_name, file_path in alpha_data_sources[coin][time_frame].items():
-                        alpha_dfs[alpha_name] = pd.read_csv(file_path)
+                    # for alpha_name, file_path in alpha_data_sources[coin][time_frame].items():
+                    #     alpha_dfs[alpha_name] = pd.read_csv(file_path)
 
                     data_candle = pd.read_csv(candle_data_source[coin][time_frame])
 
