@@ -30,7 +30,7 @@ class AlphaPreprocessor:
         self.weights = weights or [1, 1]  # default weights
         self.output_folder = output_folder
     
-    def combine_alphas(self, data: pd.DataFrame, alpha_columns: List[str], method: str = 'multiply'):
+    def combine_alphas(self, data: pd.DataFrame, alpha_columns: List[str], method: str = None):
         """
         Full arithmetic operations for combining multiple alpha signals
         
@@ -39,10 +39,12 @@ class AlphaPreprocessor:
         - alpha_columns: List of alpha column names
         - method: ('add', 'subtract', 'multiply', 'divide')
         """
+        if len(alpha_columns) == 1:
+            return data[alpha_columns[0]]
         alpha1 = data[alpha_columns[0]]
         alpha2 = data[alpha_columns[1]]
         
-        # 计算结果
+  
         result = None
         if method == 'add':
             result = alpha1 + alpha2
@@ -81,7 +83,6 @@ class AlphaPreprocessor:
                              f"'divide_inverse', 'weighted_add', 'log_ratio', 'percent_diff', " 
                              f"'geometric_mean', 'harmonic_mean'")
 
-        # 生成图表
         plt.figure(figsize=(10, 6))
         plt.plot(data.index, alpha1, label=alpha_columns[0])
         plt.plot(data.index, alpha2, label=alpha_columns[1])
@@ -96,6 +97,14 @@ class AlphaPreprocessor:
         Path(os.path.dirname(output_path)).mkdir(parents=True, exist_ok=True)
         plt.savefig(output_path)
         plt.close()
+        
+
+        print(f"\nCombined Alpha Chart: {output_path}")
+        user_input = input("\nContinue? (y/n): ").lower()
+        if user_input != 'y':
+            print("User choose to terminate the program")
+            import sys
+            sys.exit(0)
 
         return result
 
@@ -152,7 +161,6 @@ class Optimization():
                                          self.time_frame.lower(), trading_strategy.name.lower())
         Path(self.output_folder).mkdir(parents=True, exist_ok=True)
         
-        # 移到这里：在output_folder设置好之后再创建preprocessor
         self.alpha_preprocessor = AlphaPreprocessor(
             weights=self.alpha_weights,
             output_folder=self.output_folder
@@ -386,15 +394,99 @@ class Optimization():
         
         elif self.model == ModelEnum.EMA:
             # Calculating ema for specific column
-            # Create upperbound and lowerbound based on ema and diff_threshold
-            # Use original column as alpha against threshold
             ema_column_name = f'{column_name}-ema'
             data[ema_column_name] = self.calculate_ema(data, column_name, rolling_window)
             
+            adjusted_diff_threshold = diff_threshold * 10
+            
             # Use vectorized function to calculate thresholds
-            data[self.lower_threshold_col], data[self.upper_threshold_col] = self.calculate_thresholds(data[ema_column_name], diff_threshold)
+            data[self.lower_threshold_col], data[self.upper_threshold_col] = self.calculate_thresholds(data[ema_column_name], adjusted_diff_threshold)
             
             return column_name
+
+        elif self.model == ModelEnum.MINMAX:
+            # Min-Max Scaling with rolling window
+            minmax_column_name = f'{column_name}-minmax'
+
+            rolling_min = data[column_name].rolling(window=rolling_window).min()
+            rolling_max = data[column_name].rolling(window=rolling_window).max()
+            
+            # Calculate normalized values
+            data[minmax_column_name] = (data[column_name] - rolling_min) / (rolling_max - rolling_min)
+            
+
+            data[self.lower_threshold_col] = diff_threshold
+            data[self.upper_threshold_col] = 1 - diff_threshold
+            
+            return minmax_column_name
+
+        elif self.model == ModelEnum.ROBUST:
+            # Robust Scaling with rolling window
+            robust_column_name = f'{column_name}-robust'
+            
+            # Use rolling window to calculate median and IQR
+            rolling_median = data[column_name].rolling(window=rolling_window).median()
+            q75 = data[column_name].rolling(window=rolling_window).quantile(0.75)
+            q25 = data[column_name].rolling(window=rolling_window).quantile(0.25)
+            rolling_iqr = q75 - q25
+            
+
+            data[robust_column_name] = (data[column_name] - rolling_median) / rolling_iqr
+            
+
+            data[self.lower_threshold_col] = -diff_threshold
+            data[self.upper_threshold_col] = diff_threshold
+            
+            return robust_column_name
+
+        elif self.model == ModelEnum.MAXABS:
+            # MaxAbs Scaling with rolling window
+            maxabs_column_name = f'{column_name}-maxabs'
+            
+            rolling_maxabs = data[column_name].abs().rolling(window=rolling_window).max()
+            
+            # Calculate maxabs scaling
+            data[maxabs_column_name] = data[column_name] / rolling_maxabs
+            
+            data[self.lower_threshold_col] = -diff_threshold
+            data[self.upper_threshold_col] = diff_threshold
+            
+            return maxabs_column_name
+
+        elif self.model == ModelEnum.LOG:
+            # Log Transformation with thresholds
+            log_column_name = f'{column_name}-log'
+            eps = 1e-10  # avoid log = 0
+            
+            data[log_column_name] = np.log(np.abs(data[column_name]) + eps)
+            
+            # Use rolling window to calculate thresholds
+            rolling_mean = data[log_column_name].rolling(window=rolling_window).mean()
+            rolling_std = data[log_column_name].rolling(window=rolling_window).std()
+            
+ 
+            data[self.lower_threshold_col] = rolling_mean - (diff_threshold * rolling_std)
+            data[self.upper_threshold_col] = rolling_mean + (diff_threshold * rolling_std)
+            
+            return log_column_name
+
+        elif self.model == ModelEnum.SOFTMAX:
+            # SoftMax with rolling window
+            softmax_column_name = f'{column_name}-softmax'
+            
+            # Use rolling window to calculate softmax
+            def rolling_softmax(x):
+                exp_x = np.exp(x - np.max(x))  # Subtract the maximum value to improve numerical stability
+                return exp_x / exp_x.sum()
+            
+            data[softmax_column_name] = data[column_name].rolling(window=rolling_window).apply(
+                rolling_softmax, raw=True
+            )
+            
+            data[self.lower_threshold_col] = diff_threshold
+            data[self.upper_threshold_col] = 1 - diff_threshold
+            
+            return softmax_column_name
     # ----- End Model -----
 
     # ----- Begin trade -----
@@ -469,7 +561,7 @@ class Optimization():
         self.convert_start_time_column(data_candle)
         merged_data = data_candle.copy()
         
-        # 遍历每个alpha数据源并合并
+        # loop alpha data sources and merge
         for alpha_name, df in data_sources.items():
             self.convert_start_time_column(df)
             merged_data = pd.merge(merged_data, df, on='start_time', how='inner')
@@ -477,7 +569,7 @@ class Optimization():
             if len(merged_data) != len(data_candle):
                 print(f"[{self.__class__.__name__}] !!! Warning: Alpha {alpha_name} and candle have different number of rows. [Candle:{len(data_candle)}, Merged: {len(merged_data)}] !!!")
         
-        # 合并完成后，计算combined alpha
+        # after merging, calculate combined alpha
         merged_data['combined_alpha'] = self.alpha_preprocessor.combine_alphas(
             merged_data, 
             self.alpha_columns,

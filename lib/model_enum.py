@@ -1,7 +1,11 @@
-
 from enum import Enum
 
 class ModelEnum(Enum):
-    MEAN = 1
-    ZSCORE = 2
-    EMA = 3
+    MEAN = "mean"
+    ZSCORE = "zscore"
+    EMA = "ema"
+    MINMAX = "minmax"
+    ROBUST = "robust"
+    MAXABS = "maxabs"
+    LOG = "log"
+    SOFTMAX = "softmax"

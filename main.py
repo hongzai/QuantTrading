@@ -18,7 +18,7 @@ if __name__ == "__main__":
     # Parameters
     coins = ["BTC"]
     time_frames = ["1h"]
-    models = [ModelEnum.MEAN, ModelEnum.ZSCORE]
+    models = [ModelEnum.ZSCORE,ModelEnum.MINMAX] # ModelEnum.MEAN, ModelEnum.EMA, ModelEnum.MINMAX, ModelEnum.ROBUST, ModelEnum.MAXABS, ModelEnum.LOG, ModelEnum.SOFTMAX
     trading_strategies = [TradingStrategyEnum.LONG_SHORT_OUTRANGE_MOMEMTUM]
     rolling_windows = list(range(100, 601, 25))
     diff_thresholds = [round(num, 2) for num in np.arange(0.2, 2.0, 0.2).tolist()]
@@ -54,7 +54,7 @@ if __name__ == "__main__":
         for time_frame in time_frames:
             for model in models:
                 for trading_strategy in trading_strategies:
-                    # 读取多个alpha数据
+                    # read multiple alpha data
                     alpha_dfs = {}
                     for alpha_name, file_path in alpha_data_sources[coin][time_frame].items():
                         alpha_dfs[alpha_name] = pd.read_csv(file_path)
