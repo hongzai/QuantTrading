@@ -22,13 +22,21 @@ if __name__ == "__main__":
     trading_strategies = [TradingStrategyEnum.LONG_SHORT_OUTRANGE_MOMEMTUM]
     rolling_windows = list(range(100, 601, 25))
     diff_thresholds = [round(num, 2) for num in np.arange(0.2, 2.0, 0.2).tolist()]
-    trading_fee = 0.00055 # 0.00055
+    trading_fee = 0.00055 
+    alpha_config = {
+        "columns": ['coinbase_premium_gap', 'open_interest'],
+        "method": "multiply",  # "add",subtract","multiply","divide","percent_diff","log_ratio","geometric_mean","harmonic_mean"
+        "weights": [1, 1]  # 权重配置
+    }
     
     # Data source
     alpha_column_name = "coinbase_premium_gap"
     alpha_data_sources = {
         coin: {
-            time_frame: os.path.join(parent_dir, "resources", f"Cryptoquant_{coin}_MarketCoinbasePremiumIndex_{time_frame}.csv")
+            time_frame: {
+                "coinbase_premium_gap": os.path.join(parent_dir, "resources", f"Cryptoquant_{coin}_MarketCoinbasePremiumIndex_{time_frame}.csv"),
+                "open_interest": os.path.join(parent_dir, "resources", f"Cryptoquant_{coin}_OpenInterest_{time_frame}.csv")
+            }
             for time_frame in time_frames
         }
         for coin in coins
@@ -46,12 +54,17 @@ if __name__ == "__main__":
         for time_frame in time_frames:
             for model in models:
                 for trading_strategy in trading_strategies:
-                    data_source = pd.read_csv(alpha_data_sources[coin][time_frame])
+                    # 读取多个alpha数据
+                    alpha_dfs = {}
+                    for alpha_name, file_path in alpha_data_sources[coin][time_frame].items():
+                        alpha_dfs[alpha_name] = pd.read_csv(file_path)
+
                     data_candle = pd.read_csv(candle_data_source[coin][time_frame])
 
                     optimization = Optimization(
-                        data_sources=[data_source],
+                        data_sources=alpha_dfs,
                         data_candle=data_candle,
+                        alpha_config=alpha_config,
                         rolling_windows=rolling_windows,
                         diff_thresholds=diff_thresholds,
                         trading_strategy=trading_strategy,

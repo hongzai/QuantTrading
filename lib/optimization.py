@@ -1,7 +1,7 @@
 import decimal
 from pathlib import Path
 import re
-from typing import List
+from typing import List, Dict
 import pandas as pd
 import os
 import numpy as np
@@ -24,6 +24,74 @@ This class is designed to simulate trading using rolling windows and differentia
 # Create a lock for threading
 lock = threading.Lock()
 
+class AlphaPreprocessor:
+    def __init__(self, weights=None):
+        self.preprocessed_column = 'combined_alpha'
+        self.weights = weights or [1, 1]  # 默认权重
+    
+    def combine_alphas(self, data: pd.DataFrame, alpha_columns: List[str], method: str = 'multiply'):
+        """
+        合并多个alpha信号的完整算术运算
+        
+        Parameters:
+        - data: 包含alpha数据的DataFrame
+        - alpha_columns: alpha列名列表
+        - method: 计算方法 ('add', 'subtract', 'multiply', 'divide')
+        """
+        # 获取两个alpha序列
+        alpha1 = data[alpha_columns[0]]
+        alpha2 = data[alpha_columns[1]]
+        
+        # 基础运算
+        if method == 'add':
+            return alpha1 + alpha2
+        
+        elif method == 'subtract':
+            return alpha1 - alpha2
+        
+        elif method == 'multiply':
+            return alpha1 * alpha2
+        
+        elif method == 'divide':
+            # 除法保护
+            denominator = alpha2.replace(0, np.nan)  # 将0替换为NaN
+            result = alpha1 / denominator
+            return result
+        
+        elif method == 'divide_inverse':
+            # 反向除法保护
+            denominator = alpha1.replace(0, np.nan)
+            result = alpha2 / denominator
+            return result
+            
+        elif method == 'weighted_add':
+            # 假设weights在alpha_config中定义
+            w1, w2 = self.weights if hasattr(self, 'weights') else (1, 1)
+            return (w1 * alpha1 + w2 * alpha2) / (w1 + w2)
+        
+        elif method == 'log_ratio':
+            # 对数比率 (处理负值)
+            eps = 1e-10  # 小数保护
+            return np.log(np.abs(alpha1) + eps) - np.log(np.abs(alpha2) + eps)
+        
+        elif method == 'percent_diff':
+            # 百分比差异
+            return (alpha1 - alpha2) / np.abs(alpha2.replace(0, np.nan))
+        
+        elif method == 'geometric_mean':
+            # 几何平均
+            return np.sqrt(np.abs(alpha1 * alpha2)) * np.sign(alpha1 * alpha2)
+        
+        elif method == 'harmonic_mean':
+            # 调和平均
+            denominator = (1/np.abs(alpha1) + 1/np.abs(alpha2)) / 2
+            return np.sign(alpha1 * alpha2) / denominator
+            
+        else:
+            raise ValueError(f"Unknown method: {method}. Please choose from: 'add', 'subtract', 'multiply', 'divide', " 
+                             f"'divide_inverse', 'weighted_add', 'log_ratio', 'percent_diff', " 
+                             f"'geometric_mean', 'harmonic_mean'")
+
 class Optimization():
 
     data = pd.DataFrame([])
@@ -40,8 +108,11 @@ class Optimization():
     alpha_column_name = ""
     lower_threshold_col = 'lower_threshold'
     upper_threshold_col = 'upper_threshold'
+    alpha_preprocessor = AlphaPreprocessor()
+    alpha_columns = ['coinbase_premium_gap', 'open_interest']
 
-    def __init__(self, data_sources: List[pd.DataFrame], data_candle: pd.DataFrame, 
+    def __init__(self, data_sources: Dict[str, pd.DataFrame], data_candle: pd.DataFrame, 
+                 alpha_config: dict,
                  alpha_column_name: str, rolling_windows: list, diff_thresholds: list, 
                  trading_strategy: TradingStrategyEnum, coin: str, time_frame: str, model: ModelEnum,
                  output_folder: str,
@@ -62,6 +133,12 @@ class Optimization():
         self.is_export_csv = is_export_all_csv
         self.is_export_chart = is_export_all_chart
         self.alpha_column_name = alpha_column_name
+        self.alpha_columns = alpha_config["columns"]
+        self.alpha_method = alpha_config["method"]
+        self.alpha_weights = alpha_config["weights"]
+        
+        # 创建preprocessor时传入权重
+        self.alpha_preprocessor = AlphaPreprocessor(weights=self.alpha_weights)
 
         # Prepare folder
         coin_name = self.coin if self.coin is not None else ""
@@ -378,17 +455,24 @@ class Optimization():
             if len(ds) != len(data_candle):
                 raise ValueError("One of the data sources and candle have different number of rows")
 
-    def merge_data(self, data_sources: List[pd.DataFrame], data_candle: pd.DataFrame) -> pd.DataFrame:
+    def merge_data(self, data_sources: Dict[str, pd.DataFrame], data_candle: pd.DataFrame) -> pd.DataFrame:
         self.convert_start_time_column(data_candle)
         merged_data = data_candle.copy()
         
-        len_candle = len(data_candle)
-        for df in data_sources:
+        # 遍历每个alpha数据源并合并
+        for alpha_name, df in data_sources.items():
             self.convert_start_time_column(df)
             merged_data = pd.merge(merged_data, df, on='start_time', how='inner')
             
-            if len(merged_data) != len_candle:
-                print(f"[{self.__class__.__name__}] !!! Warning: One of the data sources and candle have different number of rows. [Candle:{len_candle}, Merged: {len(merged_data)}] !!!")
+            if len(merged_data) != len(data_candle):
+                print(f"[{self.__class__.__name__}] !!! Warning: Alpha {alpha_name} and candle have different number of rows. [Candle:{len(data_candle)}, Merged: {len(merged_data)}] !!!")
+        
+        # 合并完成后，计算combined alpha
+        merged_data['combined_alpha'] = self.alpha_preprocessor.combine_alphas(
+            merged_data, 
+            self.alpha_columns,
+            method=self.alpha_method
+        )
         
         return merged_data
 
