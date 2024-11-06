@@ -24,8 +24,8 @@ if __name__ == "__main__":
     diff_thresholds = [round(num, 2) for num in np.arange(0.2, 2.0, 0.2).tolist()]
     trading_fee = 0.00055 
     alpha_config = {
-        "columns": ['coinbase_premium_gap', 'open_interest'],
-        "method": "multiply",  # "add",subtract","multiply","divide","percent_diff","log_ratio","geometric_mean","harmonic_mean"
+        "columns": ['open_interest','coinbase_premium_gap'],
+        "method": "divide",  # "add",subtract","multiply","divide","percent_diff","log_ratio","geometric_mean","harmonic_mean"
         "weights": [1, 1]  # 权重配置
     }
     

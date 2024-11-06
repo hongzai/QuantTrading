@@ -25,72 +25,79 @@ This class is designed to simulate trading using rolling windows and differentia
 lock = threading.Lock()
 
 class AlphaPreprocessor:
-    def __init__(self, weights=None):
+    def __init__(self, weights=None, output_folder=None):
         self.preprocessed_column = 'combined_alpha'
-        self.weights = weights or [1, 1]  # 默认权重
+        self.weights = weights or [1, 1]  # default weights
+        self.output_folder = output_folder
     
     def combine_alphas(self, data: pd.DataFrame, alpha_columns: List[str], method: str = 'multiply'):
         """
-        合并多个alpha信号的完整算术运算
+        Full arithmetic operations for combining multiple alpha signals
         
         Parameters:
-        - data: 包含alpha数据的DataFrame
-        - alpha_columns: alpha列名列表
-        - method: 计算方法 ('add', 'subtract', 'multiply', 'divide')
+        - data: DataFrame containing alpha data
+        - alpha_columns: List of alpha column names
+        - method: ('add', 'subtract', 'multiply', 'divide')
         """
-        # 获取两个alpha序列
         alpha1 = data[alpha_columns[0]]
         alpha2 = data[alpha_columns[1]]
         
-        # 基础运算
+        # 计算结果
+        result = None
         if method == 'add':
-            return alpha1 + alpha2
-        
+            result = alpha1 + alpha2
         elif method == 'subtract':
-            return alpha1 - alpha2
-        
+            result = alpha1 - alpha2
         elif method == 'multiply':
-            return alpha1 * alpha2
-        
+            result = alpha1 * alpha2
         elif method == 'divide':
             # 除法保护
             denominator = alpha2.replace(0, np.nan)  # 将0替换为NaN
             result = alpha1 / denominator
-            return result
-        
         elif method == 'divide_inverse':
             # 反向除法保护
             denominator = alpha1.replace(0, np.nan)
             result = alpha2 / denominator
-            return result
-            
         elif method == 'weighted_add':
             # 假设weights在alpha_config中定义
             w1, w2 = self.weights if hasattr(self, 'weights') else (1, 1)
-            return (w1 * alpha1 + w2 * alpha2) / (w1 + w2)
-        
+            result = (w1 * alpha1 + w2 * alpha2) / (w1 + w2)
         elif method == 'log_ratio':
             # 对数比率 (处理负值)
             eps = 1e-10  # 小数保护
-            return np.log(np.abs(alpha1) + eps) - np.log(np.abs(alpha2) + eps)
-        
+            result = np.log(np.abs(alpha1) + eps) - np.log(np.abs(alpha2) + eps)
         elif method == 'percent_diff':
             # 百分比差异
-            return (alpha1 - alpha2) / np.abs(alpha2.replace(0, np.nan))
-        
+            result = (alpha1 - alpha2) / np.abs(alpha2.replace(0, np.nan))
         elif method == 'geometric_mean':
             # 几何平均
-            return np.sqrt(np.abs(alpha1 * alpha2)) * np.sign(alpha1 * alpha2)
-        
+            result = np.sqrt(np.abs(alpha1 * alpha2)) * np.sign(alpha1 * alpha2)
         elif method == 'harmonic_mean':
             # 调和平均
             denominator = (1/np.abs(alpha1) + 1/np.abs(alpha2)) / 2
-            return np.sign(alpha1 * alpha2) / denominator
-            
+            result = np.sign(alpha1 * alpha2) / denominator
         else:
             raise ValueError(f"Unknown method: {method}. Please choose from: 'add', 'subtract', 'multiply', 'divide', " 
                              f"'divide_inverse', 'weighted_add', 'log_ratio', 'percent_diff', " 
                              f"'geometric_mean', 'harmonic_mean'")
+
+        # 生成图表
+        plt.figure(figsize=(10, 6))
+        plt.plot(data.index, alpha1, label=alpha_columns[0])
+        plt.plot(data.index, alpha2, label=alpha_columns[1])
+        plt.plot(data.index, result, label=f'Combined ({method})')
+        plt.title(f'{alpha_columns[0]} {method} {alpha_columns[1]}')
+        plt.xlabel('Index')
+        plt.ylabel('Value')
+        plt.legend()
+        plt.grid(True)
+
+        output_path = os.path.join(self.output_folder, f'combined_alpha_{alpha_columns[0]}_{method}_{alpha_columns[1]}.png')
+        Path(os.path.dirname(output_path)).mkdir(parents=True, exist_ok=True)
+        plt.savefig(output_path)
+        plt.close()
+
+        return result
 
 class Optimization():
 
@@ -137,9 +144,6 @@ class Optimization():
         self.alpha_method = alpha_config["method"]
         self.alpha_weights = alpha_config["weights"]
         
-        # 创建preprocessor时传入权重
-        self.alpha_preprocessor = AlphaPreprocessor(weights=self.alpha_weights)
-
         # Prepare folder
         coin_name = self.coin if self.coin is not None else ""
         exchange_name = self.exchange if self.exchange is not None else ""
@@ -147,6 +151,12 @@ class Optimization():
                                          coin_name.lower(), exchange_name.lower(), 
                                          self.time_frame.lower(), trading_strategy.name.lower())
         Path(self.output_folder).mkdir(parents=True, exist_ok=True)
+        
+        # 移到这里：在output_folder设置好之后再创建preprocessor
+        self.alpha_preprocessor = AlphaPreprocessor(
+            weights=self.alpha_weights,
+            output_folder=self.output_folder
+        )
 
         # Merge data
         self.data = self.merge_data(data_sources, data_candle)
