@@ -555,13 +555,32 @@ class Optimization():
             # Calculate RSI
             data[rsi_column_name] = 100 - (100 / (1 + rs))
             
-            # 直接使用diff_threshold作为RSI阈值
             data[self.lower_threshold_col] = diff_threshold
-            data[self.upper_threshold_col] = 100 - diff_threshold  # 对称设置上阈值
+            data[self.upper_threshold_col] = 100 - diff_threshold
             
             print(f"[{self.__class__.__name__}] RSI Period={rolling_window}, Thresholds={data[self.lower_threshold_col].iloc[-1]}/{data[self.upper_threshold_col].iloc[-1]}")
             
             return rsi_column_name
+
+        elif self.model == ModelEnum.LINEAR_REGRESSION:
+            # 线性回归
+            regression_column_name = f'{column_name}-regression'
+            data[regression_column_name] = self.calculate_linear_regression(data, column_name, rolling_window)
+            
+            data[self.lower_threshold_col] = data[regression_column_name] - diff_threshold
+            data[self.upper_threshold_col] = data[regression_column_name] + diff_threshold
+            
+            return regression_column_name
+
+        elif self.model == ModelEnum.PERCENTILE:
+            # 百分位数
+            percentile_column_name = f'{column_name}-percentile'
+            data[percentile_column_name] = self.calculate_percentile(data, column_name, rolling_window)
+            
+            data[self.lower_threshold_col] = data[percentile_column_name].quantile(0.25)
+            data[self.upper_threshold_col] = data[percentile_column_name].quantile(0.75)
+            
+            return percentile_column_name
     # ----- End Model -----
 
     # ----- Begin trade -----
@@ -621,6 +640,21 @@ class Optimization():
     
     def calculate_ema(self, data, column_name, span):
         return data[column_name].ewm(span=span, adjust=False).mean()
+
+    # 添加计算线性回归的方法
+    def calculate_linear_regression(self, data: pd.DataFrame, column_name: str, rolling_window: int):
+        # 使用rolling apply来计算线性回归
+        def linear_regression(x):
+            x = np.arange(len(x))
+            y = data[column_name].iloc[x.index]
+            slope, intercept = np.polyfit(x, y, 1)
+            return slope * x[-1] + intercept
+        
+        return data[column_name].rolling(window=rolling_window).apply(linear_regression, raw=False)
+
+    # 添加计算百分位数的方法
+    def calculate_percentile(self, data: pd.DataFrame, column_name: str, rolling_window: int):
+        return data[column_name].rolling(window=rolling_window).apply(lambda x: np.percentile(x, 50), raw=False)
     # ----- End Model Formula-----
             
     # ----- Begin Helper -----
