@@ -18,10 +18,10 @@ if __name__ == "__main__":
     # Parameters
     coins = ["BTC"]
     time_frames = ["1h"]
-    models = [ModelEnum.DOUBLE_EMA_CROSSING] # ModelEnum ZSCORE, ModelEnum.MEAN, ModelEnum.EMA, ModelEnum.MINMAX, ModelEnum.SOFTMAX, ModelEnum.ROBUST, ModelEnum.MAXABS, ModelEnum.LOG
+    models = [ModelEnum.RSI] # ModelEnum ZSCORE, ModelEnum.MEAN, ModelEnum.EMA, ModelEnum.MINMAX, ModelEnum.SOFTMAX, ModelEnum.ROBUST, ModelEnum.MAXABS, ModelEnum.LOG
     trading_strategies = [TradingStrategyEnum.LONG_SHORT_OUTRANGE_MOMEMTUM]
-    rolling_windows = list(range(5, 100, 5))
-    diff_thresholds = [round(num, 2) for num in np.arange(5, 200, 5).tolist()]
+    rolling_windows = list(range(5, 205, 5))
+    diff_thresholds = [round(num, 2) for num in np.arange(5, 45, 5).tolist()]
     trading_fee = 0.00055 
     alpha_config = {
         "columns": ['close']

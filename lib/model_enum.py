@@ -11,3 +11,4 @@ class ModelEnum(Enum):
     SOFTMAX = "softmax"
     EMA_DIFF = "ema_diff"
     DOUBLE_EMA_CROSSING = "double_ema_crossing"
+    RSI = "rsi"

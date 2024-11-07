@@ -533,6 +533,35 @@ class Optimization():
             print(f"[{self.__class__.__name__}] Double EMA Crossing (Long={rolling_window}, Short={short_window})")
             
             return 'ema_cross'
+
+        elif self.model == ModelEnum.RSI:
+            # Calculate RSI using the rolling window as period
+            rsi_column_name = f'{column_name}-rsi'
+            
+            # Calculate price changes
+            delta = data[column_name].diff()
+            
+            # Get gains (positive) and losses (negative)
+            gain = (delta.where(delta > 0, 0))
+            loss = (-delta.where(delta < 0, 0))
+            
+            # Calculate average gain and loss
+            avg_gain = gain.rolling(window=rolling_window).mean()
+            avg_loss = loss.rolling(window=rolling_window).mean()
+            
+            # Calculate relative strength
+            rs = avg_gain / avg_loss
+            
+            # Calculate RSI
+            data[rsi_column_name] = 100 - (100 / (1 + rs))
+            
+            # 直接使用diff_threshold作为RSI阈值
+            data[self.lower_threshold_col] = diff_threshold
+            data[self.upper_threshold_col] = 100 - diff_threshold  # 对称设置上阈值
+            
+            print(f"[{self.__class__.__name__}] RSI Period={rolling_window}, Thresholds={data[self.lower_threshold_col].iloc[-1]}/{data[self.upper_threshold_col].iloc[-1]}")
+            
+            return rsi_column_name
     # ----- End Model -----
 
     # ----- Begin trade -----
