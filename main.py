@@ -16,21 +16,22 @@ if __name__ == "__main__":
     3. EMA Crossing             = ModelEnum.EMA     -and-   diff_thresholds with 0
     4. EMA Band                 = ModelEnum.EMA     -and-   diff_thresholds with any value greater than 0
     5. ZSCORE                   = ModelEnum.ZSCORE  -and-   diff_thresholds with any value greater than 0
+    6. MINMAX                   = ModelEnum.MINMAX  -and-   diff_thresholds between -1 to 1
     '''
     # Parameters
     coins = ["BTC"]
     time_frames = ["1h"]
-    models = [ModelEnum.ZSCORE] # ZSCORE,MINMAX,SOFTMAX,ROBUST,MAXABS,LOG,LINEAR_REGRESSION,PERCENTILE,RSI,MEAN,EMA_DIFF,DOUBLE_EMA_CROSSING
+    models = [ModelEnum.MINMAX] # ZSCORE,MINMAX,SOFTMAX,ROBUST,MAXABS,LOG,LINEAR_REGRESSION,PERCENTILE,RSI,MEAN,EMA_DIFF,DOUBLE_EMA_CROSSING
     trading_strategies = [TradingStrategyEnum.LONG_SHORT_OUTRANGE_MOMEMTUM]
-    rolling_windows = list(range(5, 205, 5))
-    diff_thresholds = [round(num, 2) for num in np.arange(0.2, 3, 0.1).tolist()]
+    rolling_windows = list(range(5, 105, 5))
+    diff_thresholds = [round(num, 2) for num in np.arange(0.2, 1.2, 0.2).tolist()]
     trading_fee = 0.00055 
     alpha_config = {
         "columns": ['open_interest','coinbase_premium_gap'],
         "method": "divide",  # "add",subtract","multiply","divide","percent_diff","log_ratio","geometric_mean","harmonic_mean"
         "weights": [1, 1]  # 权重配置
     }   
-    normalize_models = [NorModel.MINMAX]
+    normalize_models = [NorModel.ZSCORE]
 
 
     
@@ -82,7 +83,7 @@ if __name__ == "__main__":
                         alpha_column_name=alpha_column_name,
                         trading_fee=trading_fee,
                         output_folder=f"{parent_dir}/output",
-                        export_file_name=f"{alpha_column_name}_{model.name}_{alpha_column_name}_{coin.upper()}_{time_frame}",
+                        export_file_name=f"{model.name}_{alpha_column_name}_{coin.upper()}_{time_frame}",
                         is_export_all_chart=False,
                         is_export_all_csv=False)
 

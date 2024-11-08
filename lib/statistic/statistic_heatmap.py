@@ -46,9 +46,16 @@ class StatisticHeatmap():
     '''
     def plot_2d_heatmap(self, output_folder: str, export_file_name: str) -> str:
         sharpe_ratio_columns = self.sharpe_ratios.shape[1]
+        sharpe_ratio_rows = self.sharpe_ratios.shape[0]
 
         # Dynamically adjust font size based on the number of columns
         font_size = max(6, min(14, 22 - (sharpe_ratio_columns // 2)))
+        
+        # Dynamically set the figure size based on the dimensions
+        print(sharpe_ratio_columns)
+        print(sharpe_ratio_rows)
+        height = max(16, sharpe_ratio_rows * 0.8)
+        width = max(36, sharpe_ratio_columns * 1)
         
         heatmap_file_path = os.path.join(output_folder, f"{export_file_name}_SR_Heatmap.png")
         
@@ -59,7 +66,7 @@ class StatisticHeatmap():
         calmar_ratios = self.calmar_ratios.astype(float)
         sortino_ratios = self.sortino_ratios.astype(float)
         
-        plt.figure(figsize=(36, 16))
+        plt.figure(figsize=(width, height))
         
         plt.subplot(2, 3, 1)
         sns.heatmap(sharpe_ratios, annot=True, annot_kws={"size": font_size}, fmt=".2f", cmap="YlGnBu")

@@ -407,132 +407,23 @@ class Optimization():
             return 'alpha_ema_diff'
 
         elif self.model == ModelEnum.MINMAX:
-            # Min-Max Scaling with rolling window
+            # Min-Max Normalization
             minmax_column_name = f'{column_name}-minmax'
-
-            rolling_min = data[column_name].rolling(window=rolling_window).min()
-            rolling_max = data[column_name].rolling(window=rolling_window).max()
-
-            # Calculate normalized values
-            data[minmax_column_name] = (data[column_name] - rolling_min) / (rolling_max - rolling_min)
+            data['rolling_min'] = data[column_name].rolling(rolling_window).min()
+            data['rolling_max'] = data[column_name].rolling(rolling_window).max()
             
-
-            data[self.lower_threshold_col] = diff_threshold
-            data[self.upper_threshold_col] = 1 - diff_threshold
+            # Avoid division by zero
+            range_diff = data['rolling_max'] - data['rolling_min']
+            range_diff = range_diff.replace(0, 1e-8)
             
+            # Apply Min-Max normalization to range [-1, 1]
+            data[minmax_column_name] = 2 * (data[column_name] - data['rolling_min']) / range_diff - 1
+            
+            # Min-Max thresholds typically in range [-1, 1]
+            data[self.lower_threshold_col] = -diff_threshold if diff_threshold > 0 else diff_threshold * 2
+            data[self.upper_threshold_col] = diff_threshold
+
             return minmax_column_name
-
-        elif self.model == ModelEnum.ROBUST:
-            # Robust Scaling with rolling window
-            robust_column_name = f'{column_name}-robust'
-            
-            # Use rolling window to calculate median and IQR
-            rolling_median = data[column_name].rolling(window=rolling_window).median()
-            q75 = data[column_name].rolling(window=rolling_window).quantile(0.75)
-            q25 = data[column_name].rolling(window=rolling_window).quantile(0.25)
-            rolling_iqr = q75 - q25
-            
-
-            data[robust_column_name] = (data[column_name] - rolling_median) / rolling_iqr
-            
-
-            data[self.lower_threshold_col] = -diff_threshold
-            data[self.upper_threshold_col] = diff_threshold
-            
-            return robust_column_name
-
-        elif self.model == ModelEnum.MAXABS:
-            # MaxAbs Scaling with rolling window
-            maxabs_column_name = f'{column_name}-maxabs'
-            
-            rolling_maxabs = data[column_name].abs().rolling(window=rolling_window).max()
-            
-            # Calculate maxabs scaling
-            data[maxabs_column_name] = data[column_name] / rolling_maxabs
-            
-            data[self.lower_threshold_col] = -diff_threshold
-            data[self.upper_threshold_col] = diff_threshold
-            
-            return maxabs_column_name
-
-        elif self.model == ModelEnum.LOG:
-            # Log Transformation with thresholds
-            log_column_name = f'{column_name}-log'
-            eps = 1e-10  # avoid log = 0
-            
-            data[log_column_name] = np.log(np.abs(data[column_name]) + eps)
-            
-            # Use rolling window to calculate thresholds
-            rolling_mean = data[log_column_name].rolling(window=rolling_window).mean()
-            rolling_std = data[log_column_name].rolling(window=rolling_window).std()
-            
- 
-            data[self.lower_threshold_col] = rolling_mean - (diff_threshold * rolling_std)
-            data[self.upper_threshold_col] = rolling_mean + (diff_threshold * rolling_std)
-            
-            return log_column_name
-
-        elif self.model == ModelEnum.SOFTMAX:
-            # SoftMax with rolling window
-            softmax_column_name = f'{column_name}-softmax'
-            
-            # Use numpy's vectorized operation
-            values = data[column_name].values
-            result = np.zeros(len(data))
-            
-            for i in range(rolling_window - 1, len(data)):
-                window = values[i-rolling_window+1:i+1]
-                # Numerical stability processing
-                window = window - np.max(window)
-                exp_window = np.exp(window)
-                softmax = exp_window / np.sum(exp_window)
-                result[i] = softmax[-1]
-            
-            data[softmax_column_name] = result
-            # use bfill to replace fillna(method='bfill')
-            data[softmax_column_name] = data[softmax_column_name].bfill()
-            
-            
-            data[self.lower_threshold_col] = diff_threshold
-            data[self.upper_threshold_col] = 1 - diff_threshold
-            
-            print(f"[{self.__class__.__name__}] Softmax values range: {data[softmax_column_name].min():.4f} to {data[softmax_column_name].max():.4f}")
-            
-            return softmax_column_name
-
-        elif self.model == ModelEnum.DOUBLE_EMA_CROSSING:
-            # Calculate long and short EMA
-            long_ema_name = f'{column_name}-long-ema'
-            short_ema_name = f'{column_name}-short-ema'
-            
-            # long_window = rolling_window
-            # short_window = diff_threshold (as integer)
-            short_window = int(diff_threshold)
-            
-            # Calculate both EMAs
-            data[long_ema_name] = self.calculate_ema(data, column_name, rolling_window)
-            data[short_ema_name] = self.calculate_ema(data, column_name, short_window)
-            
-            # Calculate the difference between short and long EMA
-            data['ema_cross'] = data[short_ema_name] - data[long_ema_name]
-            data['prev_ema_cross'] = data['ema_cross'].shift(1)
-            
-            # Set thresholds for crossing signals
-            data[self.lower_threshold_col] = np.where(
-                (data['ema_cross'] < 0) & (data['prev_ema_cross'] >= 0),  
-                -1,  
-                0 
-            )
-            
-            data[self.upper_threshold_col] = np.where(
-                (data['ema_cross'] > 0) & (data['prev_ema_cross'] <= 0),  
-                1,  
-                0 
-            )
-            
-            print(f"[{self.__class__.__name__}] Double EMA Crossing (Long={rolling_window}, Short={short_window})")
-            
-            return 'ema_cross'
 
         elif self.model == ModelEnum.RSI:
             # Calculate RSI using the rolling window as period
