@@ -1,42 +1,40 @@
 import os
 import pandas as pd
 import numpy as np
-from lib.optimization import ModelEnum, Optimization, TradingStrategyEnum
-from lib.normalization import Normalization
-from lib.normalization_enum import NorModel
+from lib.alpha.alpha_config import AlphaConfig
+from lib.alpha.alpha_combine_method_enum import AlphaCombineMethodEnum
+from lib.threshold_optimization import ThresholdModelEnum, ThresholdOptimization, ThresholdTradingStrategyEnum
 
 # Example usage
 if __name__ == "__main__":
     parent_dir = os.path.dirname(os.path.abspath(__file__))
     
     '''
-    Use case (Model Template.ipynb):
-    1. SMA Crossing             = ModelEnum.MEAN    -and-   diff_thresholds with 0
-    2. SMA Band                 = ModelEnum.MEAN    -and-   diff_thresholds with any value greater than 0
-    3. EMA Crossing             = ModelEnum.EMA     -and-   diff_thresholds with 0
-    4. EMA Band                 = ModelEnum.EMA     -and-   diff_thresholds with any value greater than 0
-    5. ZSCORE                   = ModelEnum.ZSCORE  -and-   diff_thresholds with any value greater than 0
-    6. MINMAX                   = ModelEnum.MINMAX  -and-   diff_thresholds between -1 to 1
+    Use case:
+    1. SMA Crossing             = ThresholdModelEnum.MA                 -and-   diff_thresholds with 0
+    2. SMA Band                 = ThresholdModelEnum.MA                 -and-   diff_thresholds with any value other than 0
+    3. EMA Crossing             = ThresholdModelEnum.EMA                -and-   diff_thresholds with 0
+    4. EMA Band                 = ThresholdModelEnum.EMA                -and-   diff_thresholds with any value other than 0
+    5. ZSCORE                   = ThresholdModelEnum.ZSCORE             -and-   diff_thresholds
+    6. MINMAX                   = ThresholdModelEnum.MINMAX             -and-   diff_thresholds between -1 to 1
+    7. Diff From MA             = ThresholdModelEnum.MA_DIFF            -and-   diff_thresholds
+    8. Diff From EMA            = ThresholdModelEnum.EMA_DIFF           -and-   diff_thresholds
+    9. ROBUST                   = ThresholdModelEnum.ROBUST             -and-   diff_thresholds
+    10. RSI                     = ThresholdModelEnum.RSI                -and-   diff_thresholds (lower_threshold=diff_thresholds, upper_threshold=100-diff_threshold) 
+    11. Linear regression band  = ThresholdModelEnum.LINEAR_REGRESSION  -and-   diff_thresholds
     '''
-    # Parameters
+    # --- 1. Define Parameters ---
     coins = ["BTC"]
     time_frames = ["1h"]
-    models = [ModelEnum.MINMAX] # ZSCORE,MINMAX,SOFTMAX,ROBUST,MAXABS,LOG,LINEAR_REGRESSION,PERCENTILE,RSI,MEAN,EMA_DIFF,DOUBLE_EMA_CROSSING
-    trading_strategies = [TradingStrategyEnum.LONG_SHORT_OUTRANGE_MOMEMTUM]
-    rolling_windows = list(range(5, 105, 5))
-    diff_thresholds = [round(num, 2) for num in np.arange(0.2, 1.2, 0.2).tolist()]
-    trading_fee = 0.00055 
-    alpha_config = {
-        "columns": ['open_interest','coinbase_premium_gap'],
-        "method": "divide",  # "add",subtract","multiply","divide","percent_diff","log_ratio","geometric_mean","harmonic_mean"
-        "weights": [1, 1]  # 权重配置
-    }   
-    normalize_models = [NorModel.ZSCORE]
-
-
+    models = [ThresholdModelEnum.ZSCORE]
+    trading_strategies = [ThresholdTradingStrategyEnum.LONG_SHORT_OUTRANGE_MOMEMTUM]
+    rolling_windows = list(range(25, 500, 25))
+    diff_thresholds = [round(num, 2) for num in np.arange(0.2, 1.5, 0.1).tolist()]
+    trading_fee = 0.00055
+    enable_alpha_analysis = True                        # To generate data analysis report (Take the first 'rolling_windows' as reference)
+    enable_alpha_analysis_confirmation = False          # To prompt confirmation before starting optimization
     
-    # Data source
-    alpha_column_name = "coinbase_premium_gap"
+    # --- 2. Define Data Source ---
     alpha_data_sources = {
         coin: {
             time_frame: {
@@ -55,63 +53,51 @@ if __name__ == "__main__":
         for coin in coins
     }
 
-   
-
-    # Iterate optimization process
+    # --- 3. Choosing Alpha ---
+    # [Option 1] For 1 alpha
+    alpha_config = AlphaConfig.for_1_alpha(alpha_column_name='coinbase_premium_gap')
+    
+    # [Option 2] For combine 2 alphas
+    #alpha_config = AlphaConfig.for_combine_2_alphas(alpha_column_1='open_interest', alpha_column_2='coinbase_premium_gap', combine_method=AlphaCombineMethodEnum.DIVIDE, weights=[1,1])
+    
+    # [Option 3] For apply custom formula
+    #custom_formula = lambda df: df['open_interest'] / df['coinbase_premium_gap']
+    #alpha_config = AlphaConfig.for_custom_formula(custom_formula=custom_formula, new_alpha_column_name="OI-Div-CPG")
+    
+    
+    # --- Iterate optimization process ---
     for coin in coins:
         for time_frame in time_frames:
             for model in models:
                 for trading_strategy in trading_strategies:
-                    # read multiple alpha data
+                    # Read multiple alpha data
                     alpha_dfs = {}
                     for alpha_name, file_path in alpha_data_sources[coin][time_frame].items():
                         alpha_dfs[alpha_name] = pd.read_csv(file_path)
 
+                    # Read candle data
                     data_candle = pd.read_csv(candle_data_source[coin][time_frame])
 
-                    # 1. First create Optimization instance for alpha config calculation
-                    optimization = Optimization(
+                    # Create Optimization instance
+                    optimization = ThresholdOptimization(
                         data_sources=alpha_dfs,
                         data_candle=data_candle,
-                        alpha_config=alpha_config,
                         rolling_windows=rolling_windows,
                         diff_thresholds=diff_thresholds,
                         trading_strategy=trading_strategy,
                         coin=coin,
                         time_frame=time_frame,
                         model=model,
-                        alpha_column_name=alpha_column_name,
+                        alpha_config=alpha_config,
+                        enable_alpha_analysis=enable_alpha_analysis,
+                        enable_alpha_analysis_confirmation=enable_alpha_analysis_confirmation,
                         trading_fee=trading_fee,
+                        #filter_start_time='2023-01-01 12:00:00',
+                        #filter_end_time='2024-01-01 12:00:00',
                         output_folder=f"{parent_dir}/output",
-                        export_file_name=f"{model.name}_{alpha_column_name}_{coin.upper()}_{time_frame}",
-                        is_export_all_chart=False,
-                        is_export_all_csv=False)
+                        export_file_name=f"{model.name}_{alpha_config.new_alpha_column_name}_{coin.upper()}_{time_frame}")
 
-                    # 2. Calculate combined alpha first
-                    combined_data = optimization.alpha_preprocessor.combine_alphas(
-                        optimization.data,
-                        alpha_config["columns"],
-                        method=alpha_config["method"]
-                    )
-                    optimization.data['combined_alpha'] = combined_data
-
-                    # 3. Apply normalization to the combined alpha (if needed)
-                    if normalize_models[0] is not None:  # 只有当normalize_model不为None时才进行标准化
-                        for normalize_model in normalize_models:
-                            normalization = Normalization(
-                                model=normalize_model, 
-                                rolling_window=20,
-                                output_folder=optimization.output_folder
-                            )
-                            optimization.data['normalized_alpha'] = normalization.normalize(
-                                optimization.data, 
-                                'combined_alpha'
-                            )
-                        optimization.alpha_column_name = 'normalized_alpha'  # Use normalized data for trading
-                    else:
-                        optimization.alpha_column_name = 'combined_alpha'  # Use combined data directly for trading
-
-                    # 4. Run optimization
+                    # Run optimization
                     optimization.run()
                     
                     

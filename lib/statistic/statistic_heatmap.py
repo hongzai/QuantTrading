@@ -52,8 +52,6 @@ class StatisticHeatmap():
         font_size = max(6, min(14, 22 - (sharpe_ratio_columns // 2)))
         
         # Dynamically set the figure size based on the dimensions
-        print(sharpe_ratio_columns)
-        print(sharpe_ratio_rows)
         height = max(16, sharpe_ratio_rows * 0.8)
         width = max(36, sharpe_ratio_columns * 1)
         
