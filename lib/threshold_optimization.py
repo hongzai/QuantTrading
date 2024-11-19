@@ -55,6 +55,7 @@ class ThresholdOptimization():
                  exchange: str = None, 
                  enable_alpha_analysis: bool=False,
                  enable_alpha_analysis_confirmation: bool=False,
+                 split_heatmap: bool=False,
                  filter_start_time: str=None, filter_end_time: str=None,
                  export_file_name: str="SR_Heatmap"):
         self.rolling_windows = rolling_windows
@@ -68,6 +69,7 @@ class ThresholdOptimization():
         self.filter_end_time = filter_end_time
         self.model = model
         self.trading_fee = trading_fee
+        self.split_heatmap = split_heatmap
         
         # Prepare folder
         coin_name = self.coin if self.coin is not None else ""
@@ -146,7 +148,10 @@ class ThresholdOptimization():
 
         # Plot heatmap
         self.heatmap.fill_nan_statistic()
-        self.heatmap.plot_2d_heatmap(self.output_folder, self.export_file_name)
+        if self.split_heatmap:
+            self.heatmap.plot_splitted_2d_heatmap(self.output_folder, self.export_file_name)
+        else:
+            self.heatmap.plot_2d_heatmap(self.output_folder, self.export_file_name)
         
         # Print best parameters
         self.heatmap._print_best_params(self.coin, self.time_frame, self.model.name)

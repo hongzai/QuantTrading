@@ -94,6 +94,7 @@ if __name__ == "__main__":
                         trading_fee=trading_fee,
                         #filter_start_time='2023-01-01 12:00:00',
                         #filter_end_time='2024-01-01 12:00:00',
+                        split_heatmap=False,
                         output_folder=f"{parent_dir}/output",
                         export_file_name=f"{model.name}_{alpha_config.new_alpha_column_name}_{coin.upper()}_{time_frame}")
 

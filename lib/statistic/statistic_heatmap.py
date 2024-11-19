@@ -107,6 +107,51 @@ class StatisticHeatmap():
 
         return heatmap_file_path
     
+    '''
+    Plots 2D heatmaps for each statistic (Sharpe Ratio, MDD, Cumulative PnL, Calmar Ratio, Sortino Ratio) 
+    and saves each heatmap into a different file.
+    '''
+    def plot_splitted_2d_heatmap(self, output_folder: str, export_file_name: str) -> list:
+        heatmaps = [
+            ("Sharpe Ratio", self.sharpe_ratios, "YlGnBu"),
+            ("Maximum Drawdown", self.mdds, "YlOrRd_r"),
+            ("Cumulative PnL", self.cumu_pnls, "Blues"),
+            ("Calmar Ratio", self.calmar_ratios, "RdYlGn"),
+            ("Sortino Ratio", self.sortino_ratios, "YlGnBu"),
+        ]
+        
+        file_paths = []
+        
+        for title, data, cmap in heatmaps:
+            # Ensure the data is in float format
+            data = data.astype(float)
+            
+            # Dynamically adjust font size based on the number of columns
+            font_size = max(6, min(14, 22 - (data.shape[1] // 2)))
+            
+            # Dynamically set the figure size based on the dimensions
+            height = max(16, data.shape[0] * 0.8)
+            width = max(36, data.shape[1] * 1)
+            
+            # File path for the heatmap
+            file_path = os.path.join(output_folder, f"{export_file_name}_{title.replace(' ', '_')}_Heatmap.png")
+            
+            # Plot the heatmap
+            plt.figure(figsize=(width, height))
+            sns.heatmap(data, annot=True, annot_kws={"size": font_size}, fmt=".2f", cmap=cmap)
+            plt.title(f"{title} Heatmap")
+            plt.xlabel("Diff Threshold")
+            plt.ylabel("Rolling Window")
+            
+            plt.tight_layout()
+            plt.savefig(file_path)
+            plt.close()
+            gc.collect()  # Explicit garbage collection
+            
+            print(f"[{self.__class__.__name__}] Saving {title.lower()} heatmap to '{file_path}'")
+            file_paths.append(file_path)
+        
+        return file_paths
     
         
     def _print_best_params(self, coin: str, time_frame: str, model_name: str):
