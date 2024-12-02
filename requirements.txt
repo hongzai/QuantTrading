@@ -1,0 +1,9 @@
+numpy==1.26.4
+requests==2.31.0
+binance==0.3
+pandas==2.2.2
+matplotlib==3.8.4
+colorlog==6.8.2
+ta-lib==0.4.31
+seaborn==0.13.2
+plotly==5.24.1
