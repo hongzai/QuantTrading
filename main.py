@@ -32,7 +32,7 @@ if __name__ == "__main__":
     time_frames = ["1h"]
     models = [ThresholdModelEnum.ZSCORE]
     trading_strategies = [ThresholdTradingStrategyEnum.LONG_SHORT_OPPOSITE] 
-    rolling_windows = list(range(100, 500, 20))
+    rolling_windows = list(range(100, 520, 20))
     diff_thresholds = [round(num, 2) for num in np.arange(0.2, 5.2, 0.2).tolist()]
     trading_fee = 0.00055
     enable_alpha_analysis = False                        # To generate data analysis report (Take the first 'rolling_windows' as reference)
@@ -77,7 +77,7 @@ if __name__ == "__main__":
                     alpha_dfs = {}
                     for alpha_name, file_path in alpha_data_sources[coin][time_frame].items():
                         alpha_dfs[alpha_name] = pd.read_csv(file_path)
-                        alpha_dfs[alpha_name].rename(columns={'start_time': 'start_time'}, inplace=True)
+                        alpha_dfs[alpha_name].rename(columns={'Open Time': 'start_time'}, inplace=True)
 
                     # Read candle data
                     data_candle = pd.read_csv(candle_data_source[coin][time_frame])
