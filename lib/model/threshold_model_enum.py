@@ -3,6 +3,10 @@ from enum import Enum
 class ThresholdModelEnum(Enum):
     MA = "ma"
     EMA = "ema"
+<<<<<<< HEAD
+=======
+    EMA_REVERSE = "ema_reverse"
+>>>>>>> old-repo/V03
     ZSCORE = "zscore"
     MA_DIFF = "ma_diff"
     EMA_DIFF = "ema_diff"
@@ -11,6 +15,14 @@ class ThresholdModelEnum(Enum):
     RSI = "rsi"
     LINEAR_REGRESSION = "linear_regression"
     PERCENTILE = "percentile"
+<<<<<<< HEAD
+=======
+    BOLLINGER = 'bollinger'
+    BOLLINGER_REVERSE = 'bollinger_reverse'
+    MA_REVERSE = 'ma_reverse'
+    EMA_BOLLINGER = "ema_bollinger"
+    EMA_BOLLINGER_REVERSE = "ema_bollinger_reverse"
+>>>>>>> old-repo/V03
 
     #MAXABS = "maxabs"
     #LOG = "log"

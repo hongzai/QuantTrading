@@ -1,4 +1,7 @@
+<<<<<<< HEAD
 
+=======
+>>>>>>> old-repo/V03
 from enum import Enum
 
 class ThresholdTradingStrategyEnum(Enum):
@@ -6,4 +9,11 @@ class ThresholdTradingStrategyEnum(Enum):
     SHORT_BELOW_LOWER = 2
     LONG_SHORT_OUTRANGE_MOMEMTUM = 3
     LONG_SHORT_INRANGE_MEAN_REVERSION = 4
+<<<<<<< HEAD
     LONG_SHORT_OPPOSITE = 5
+=======
+    LONG_SHORT_OPPOSITE = 5
+    LONG_SHORT_OPPOSITE_REVERSE = 6
+    LONG_SHORT_OUTRANGE_MOMEMTUM_REVERSE = 7
+    LONG_SHORT_INRANGE_MEAN_REVERSION_REVERSE = 8
+>>>>>>> old-repo/V03
