@@ -25,6 +25,18 @@ class ThresholdModelProcessor:
             
             return column_name
         
+        elif self.model == ThresholdModelEnum.MA_REVERSE:
+            # Calculate sma for specific column
+            # Create upperbound and lowerbound based on sma and diff_threshold
+            # Use ORIGINAL column as alpha against threshold for reverse signals
+            ma_column_name = f'{column_name}-ma'
+            data[ma_column_name] = self.calculate_ma(data, column_name, rolling_window)
+            
+            # Use vectorized function to calculate thresholds
+            data[lower_threshold_col], data[upper_threshold_col] = self.calculate_thresholds(data[ma_column_name], diff_threshold)
+            
+            return column_name
+
         if self.model == ThresholdModelEnum.EMA:
             # Calculate sma for specific column
             # Create upperbound and lowerbound based on sma and diff_threshold
@@ -79,6 +91,18 @@ class ThresholdModelProcessor:
 
             return ema_diff_column_name
         
+        elif self.model == ThresholdModelEnum.EMA_REVERSE:
+            # Calculate ema for specific column
+            # Create upperbound and lowerbound based on ema and diff_threshold
+            # Use ORIGINAL column as alpha against threshold for reverse signals
+            ema_column_name = f'{column_name}-ema'
+            data[ema_column_name] = self.calculate_ema(data, column_name, rolling_window)
+            
+            # Use vectorized function to calculate thresholds
+            data[lower_threshold_col], data[upper_threshold_col] = self.calculate_thresholds(data[ema_column_name], diff_threshold)
+            
+            return column_name
+
         elif self.model == ThresholdModelEnum.MINMAX:
             # Min-Max Normalization
             minmax_column_name = f'{column_name}-minmax'
@@ -103,7 +127,6 @@ class ThresholdModelProcessor:
             return rsi_column_name
 
         elif self.model == ThresholdModelEnum.LINEAR_REGRESSION:
-            # 线性回归
             regression_column_name = f'{column_name}-regression'
             data[regression_column_name] = self.calculate_linear_regression(data, column_name, rolling_window)
             
@@ -113,7 +136,6 @@ class ThresholdModelProcessor:
             return regression_column_name
 
         elif self.model == ThresholdModelEnum.PERCENTILE:
-            # 百分位数
             percentile_column_name = f'{column_name}-percentile'
             data[percentile_column_name] = self.calculate_percentile(data, column_name, rolling_window)
             
@@ -132,6 +154,71 @@ class ThresholdModelProcessor:
             
             return robust_column_name
 
+        elif self.model == ThresholdModelEnum.BOLLINGER:
+            bb_column_name = f'{column_name}-bb'
+            data[bb_column_name] = self.calculate_ma(data, column_name, rolling_window)
+            
+            std = data[column_name].rolling(window=rolling_window).std()
+            
+            data[lower_threshold_col] = data[bb_column_name] - (std * diff_threshold)
+            data[upper_threshold_col] = data[bb_column_name] + (std * diff_threshold)
+            
+            return column_name
+
+        elif self.model == ThresholdModelEnum.BOLLINGER_REVERSE:
+            bb_column_name = f'{column_name}-bb'
+            data[bb_column_name] = self.calculate_ma(data, column_name, rolling_window)
+            
+            std = data[column_name].rolling(window=rolling_window).std()
+            
+            data[lower_threshold_col] = data[bb_column_name] + (std * diff_threshold)
+            data[upper_threshold_col] = data[bb_column_name] - (std * diff_threshold)
+            
+            return column_name
+
+        elif self.model == ThresholdModelEnum.EMA_BOLLINGER:
+            bb_column_name = f'{column_name}-ema-bb'
+            data[bb_column_name] = self.calculate_ema(data, column_name, rolling_window)
+            
+            # calculate standard deviation using EMA
+            squared_diff = (data[column_name] - data[bb_column_name]) ** 2
+            squared_diff_df = pd.DataFrame(squared_diff, columns=[squared_diff.name])
+            ema_std = np.sqrt(self.calculate_ema(squared_diff_df, squared_diff.name, rolling_window))
+            
+            data[lower_threshold_col] = data[bb_column_name] - (ema_std * diff_threshold)
+            data[upper_threshold_col] = data[bb_column_name] + (ema_std * diff_threshold)
+            
+            return column_name
+
+        elif self.model == ThresholdModelEnum.EMA_BOLLINGER_REVERSE:
+            bb_column_name = f'{column_name}-ema-bb'
+            data[bb_column_name] = self.calculate_ema(data, column_name, rolling_window)
+            
+            # calculate standard deviation using EMA
+            squared_diff = (data[column_name] - data[bb_column_name]) ** 2
+            squared_diff_df = pd.DataFrame(squared_diff, columns=[squared_diff.name])
+            ema_std = np.sqrt(self.calculate_ema(squared_diff_df, squared_diff.name, rolling_window))
+                
+            # reverse thresholds
+            data[lower_threshold_col] = data[bb_column_name] + (ema_std * diff_threshold)
+            data[upper_threshold_col] = data[bb_column_name] - (ema_std * diff_threshold)
+            
+            return column_name
+        
+        elif self.model == ThresholdModelEnum.DOUBLE_BOLLINGER:
+            ma_column_name = f'{column_name}-ma'
+            data[ma_column_name] = self.calculate_ma(data, column_name, rolling_window)
+            
+            std = data[column_name].rolling(window=rolling_window).std()
+            
+            data[f'{lower_threshold_col}_1'] = data[ma_column_name] - (std * diff_threshold)
+            data[f'{upper_threshold_col}_1'] = data[ma_column_name] + (std * diff_threshold)
+            
+
+            data[f'{lower_threshold_col}_2'] = data[ma_column_name] - (std * diff_threshold * 1.3) 
+            data[f'{upper_threshold_col}_2'] = data[ma_column_name] + (std * diff_threshold * 1.3)
+            
+            return column_name
 
     # ----- Begin Model Formula-----
     def calculate_thresholds(self, targets: pd.Series, diff_threshold: decimal):

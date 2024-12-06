@@ -15,31 +15,35 @@ if __name__ == "__main__":
     2. SMA Band                 = ThresholdModelEnum.MA                 -and-   diff_thresholds with any value other than 0
     3. EMA Crossing             = ThresholdModelEnum.EMA                -and-   diff_thresholds with 0
     4. EMA Band                 = ThresholdModelEnum.EMA                -and-   diff_thresholds with any value other than 0
-    5. ZSCORE                   = ThresholdModelEnum.ZSCORE             -and-   diff_thresholds
-    6. MINMAX                   = ThresholdModelEnum.MINMAX             -and-   diff_thresholds between -1 to 1
-    7. Diff From MA             = ThresholdModelEnum.MA_DIFF            -and-   diff_thresholds
-    8. Diff From EMA            = ThresholdModelEnum.EMA_DIFF           -and-   diff_thresholds
-    9. ROBUST                   = ThresholdModelEnum.ROBUST             -and-   diff_thresholds
-    10. RSI                     = ThresholdModelEnum.RSI                -and-   diff_thresholds (lower_threshold=diff_thresholds, upper_threshold=100-diff_threshold) 
-    11. Linear regression band  = ThresholdModelEnum.LINEAR_REGRESSION  -and-   diff_thresholds
+    5. SMA Reverse              = ThresholdModelEnum.MA_REVERSE         -and-   diff_thresholds with any value other than 0
+    6. EMA Reverse              = ThresholdModelEnum.EMA_REVERSE        -and-   diff_thresholds with any value other than 0
+    7. Bollinger Band           = ThresholdModelEnum.BOLLINGER          -and-   diff_thresholds with any value other than 0
+    8. Bollinger Reverse        = ThresholdModelEnum.BOLLINGER_REVERSE  -and-   diff_thresholds with any value other than 0
+    9. Double Bollinger         = ThresholdModelEnum.DOUBLE_BOLLINGER   -and-   diff_thresholds with any value other than 0
+    10. ZSCORE                   = ThresholdModelEnum.ZSCORE             -and-   diff_thresholds
+    11. MINMAX                   = ThresholdModelEnum.MINMAX             -and-   diff_thresholds between -1 to 1
+    12. Diff From MA             = ThresholdModelEnum.MA_DIFF            -and-   diff_thresholds
+    13. Diff From EMA            = ThresholdModelEnum.EMA_DIFF           -and-   diff_thresholds
+    14. ROBUST                   = ThresholdModelEnum.ROBUST             -and-   diff_thresholds
+    15. RSI                     = ThresholdModelEnum.RSI                -and-   diff_thresholds (lower_threshold=diff_thresholds, upper_threshold=100-diff_threshold) 
+    16. Linear regression band  = ThresholdModelEnum.LINEAR_REGRESSION  -and-   diff_thresholds
     '''
     # --- 1. Define Parameters ---
     coins = ["BTC"]
     time_frames = ["1h"]
-    models = [ThresholdModelEnum.ZSCORE]
-    trading_strategies = [ThresholdTradingStrategyEnum.LONG_SHORT_OUTRANGE_MOMEMTUM]
-    rolling_windows = list(range(25, 500, 25))
-    diff_thresholds = [round(num, 2) for num in np.arange(0.2, 1.5, 0.1).tolist()]
+    models = [ThresholdModelEnum.DOUBLE_BOLLINGER]
+    trading_strategies = [ThresholdTradingStrategyEnum.DOUBLE_BOLLINGER] 
+    rolling_windows = list(range(100, 520, 20))
+    diff_thresholds = [round(num, 2) for num in np.arange(0.2, 5.2, 0.2).tolist()]
     trading_fee = 0.00055
-    enable_alpha_analysis = True                        # To generate data analysis report (Take the first 'rolling_windows' as reference)
+    enable_alpha_analysis = False                        # To generate data analysis report (Take the first 'rolling_windows' as reference)
     enable_alpha_analysis_confirmation = False          # To prompt confirmation before starting optimization
     
     # --- 2. Define Data Source ---
     alpha_data_sources = {
         coin: {
             time_frame: {
-                "coinbase_premium_gap": os.path.join(parent_dir, "resources", f"Cryptoquant_{coin}_MarketCoinbasePremiumIndex_{time_frame}.csv"),
-                "open_interest": os.path.join(parent_dir, "resources", f"Cryptoquant_{coin}_OpenInterest_{time_frame}.csv")
+                "optionPC_ratio": os.path.join(parent_dir, "resources", f"Glassnode_aggregated_{coin}_DerivativesOptionsOpenInterestPutCallRatio_{time_frame}.csv")
             }
             for time_frame in time_frames
         }
@@ -47,7 +51,7 @@ if __name__ == "__main__":
     }
     candle_data_source = {
         coin: {
-            time_frame: os.path.join(parent_dir, "resources", f"binance_candle_{coin}_{time_frame}.csv")
+            time_frame: os.path.join(parent_dir, "resources", f"bybit_{coin}_linear_{time_frame}_ohlc.csv")
             for time_frame in time_frames
         }
         for coin in coins
@@ -55,7 +59,7 @@ if __name__ == "__main__":
 
     # --- 3. Choosing Alpha ---
     # [Option 1] For 1 alpha
-    alpha_config = AlphaConfig.for_1_alpha(alpha_column_name='coinbase_premium_gap')
+    alpha_config = AlphaConfig.for_1_alpha(alpha_column_name='v')
     
     # [Option 2] For combine 2 alphas
     #alpha_config = AlphaConfig.for_combine_2_alphas(alpha_column_1='open_interest', alpha_column_2='coinbase_premium_gap', combine_method=AlphaCombineMethodEnum.DIVIDE, weights=[1,1])
@@ -74,9 +78,11 @@ if __name__ == "__main__":
                     alpha_dfs = {}
                     for alpha_name, file_path in alpha_data_sources[coin][time_frame].items():
                         alpha_dfs[alpha_name] = pd.read_csv(file_path)
+                        alpha_dfs[alpha_name].rename(columns={'Open Time': 'start_time'}, inplace=True)
 
                     # Read candle data
                     data_candle = pd.read_csv(candle_data_source[coin][time_frame])
+                    data_candle.rename(columns={'timestamp': 'start_time'}, inplace=True)
 
                     # Create Optimization instance
                     optimization = ThresholdOptimization(

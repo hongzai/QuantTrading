@@ -1,6 +1,7 @@
 import gc
 from matplotlib import pyplot as plt
 import pandas as pd
+import os
 
 '''
 This class is used to generate chart
@@ -20,7 +21,19 @@ class StatisticChart():
             
         for col in columns_to_convert:
             data[col] = pd.to_numeric(data[col], errors='coerce')
-        #data = data.dropna(subset=columns_to_convert)
+
+        # --- Try to load signals data ---
+        signals_dir = os.path.join(os.path.dirname(file_path), 'signals')
+        signals_file = os.path.join(signals_dir, os.path.basename(file_path).replace('.png', '_signals.pkl'))
+        
+        if os.path.exists(signals_file):
+            try:
+                signals_data = pd.read_pickle(signals_file)
+                data['signals'] = data['position'].diff().fillna(0)
+                data.loc[data['signals'] > 0, 'signals'] = 1    # long buy signal
+                data.loc[data['signals'] < 0, 'signals'] = -1   # short sell signal
+            except Exception as e:
+                print(f"Warning: Could not load signals data: {e}")
 
         # --- Plot the close price and cumu PnL chart ---
         fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(24, 12), gridspec_kw={'height_ratios': [2, 1, 1]})
@@ -31,11 +44,34 @@ class StatisticChart():
         ax1.set_ylabel('Close Price')
         ax1.legend(loc='upper left')
 
+        # mark the buy and sell signals on the price line
+        if 'signals' in data.columns:
+            buy_signals = data[data['signals'] == 1]
+            sell_signals = data[data['signals'] == -1]
+            
+            ax1.scatter(buy_signals.index, buy_signals['close'], 
+                       marker='^', color='green', s=100, label='Buy Signal')
+            ax1.scatter(sell_signals.index, sell_signals['close'], 
+                       marker='v', color='red', s=100, label='Sell Signal')
+            
+            handles, labels = ax1.get_legend_handles_labels()
+            ax1.legend(handles, labels, loc='upper left')
+
         # Add second y-axis for cumu_PnL
         ax1_2 = ax1.twinx()
         ax1_2.plot(data.index, data['cumu_PnL'], label='Cumu PnL', color='orange')
         ax1_2.set_ylabel('Cumu PnL')
         ax1_2.legend(loc='upper left', bbox_to_anchor=(0, 0.94))
+
+        # the signal mark on the cumu_PnL chart
+        # if 'signals' in data.columns:
+        #     buy_signals = data[data['signals'] == 1]
+        #     sell_signals = data[data['signals'] == -1]
+
+        #     # Mark buy and sell signals on the cumu PnL chart
+        #     ax1_2.scatter(buy_signals.index, buy_signals['cumu_PnL'], marker='^', color='blue', label='Buy Signal')
+        #     ax1_2.scatter(sell_signals.index, sell_signals['cumu_PnL'], marker='v', color='red', label='Sell Signal')
+        #     ax1_2.legend(loc='upper left', bbox_to_anchor=(0, 0.94))
 
         ax1.set_title(file_path.replace('.png', ''))
         ax1.grid(True)
