@@ -11,7 +11,12 @@ class ThresholdModelEnum(Enum):
     RSI = "rsi"
     LINEAR_REGRESSION = "linear_regression"
     PERCENTILE = "percentile"
-
+    BOLLINGER = 'bollinger'
+    BOLLINGER_REVERSE = 'bollinger_reverse'
+    EMA_BOLLINGER = "ema_bollinger"
+    EMA_BOLLINGER_REVERSE = "ema_bollinger_reverse"
+    DOUBLE_BOLLINGER = "double_bollinger"
+    
     #MAXABS = "maxabs"
     #LOG = "log"
     #SOFTMAX = "softmax"

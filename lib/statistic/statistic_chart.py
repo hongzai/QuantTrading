@@ -1,14 +1,16 @@
 import gc
 from matplotlib import pyplot as plt
 import pandas as pd
+import os
 
 '''
 This class is used to generate chart
 '''
 class StatisticChart():
-    def __init__(self, rolling_windows: list, diff_thresholds: list):
+    def __init__(self, rolling_windows: list, diff_thresholds: list, show_trades_in_chart: bool = False):
         self.rolling_windows = rolling_windows
         self.diff_thresholds = diff_thresholds
+        self.show_trades_in_chart = show_trades_in_chart
         
     def export_chart(self, file_path: str, alpha_column_name: str, data: pd.DataFrame):
         # --- Process data ---
@@ -20,7 +22,15 @@ class StatisticChart():
             
         for col in columns_to_convert:
             data[col] = pd.to_numeric(data[col], errors='coerce')
-        #data = data.dropna(subset=columns_to_convert)
+
+        # --- Try to load signals data ---
+        if self.show_trades_in_chart:
+            try:
+                data['signals'] = data['position'].diff().fillna(0)
+                data.loc[data['signals'] > 0, 'signals'] = 1    # long buy signal
+                data.loc[data['signals'] < 0, 'signals'] = -1   # short sell signal
+            except Exception as e:
+                print(f"Warning: Could not load signals data: {e}")
 
         # --- Plot the close price and cumu PnL chart ---
         fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(24, 12), gridspec_kw={'height_ratios': [2, 1, 1]})
@@ -31,11 +41,35 @@ class StatisticChart():
         ax1.set_ylabel('Close Price')
         ax1.legend(loc='upper left')
 
+        legend_gap = 0
+        
+        # mark the buy and sell signals on the price line
+        if 'signals' in data.columns:
+            buy_signals = data[data['signals'] == 1]
+            sell_signals = data[data['signals'] == -1]
+            
+            ax1.scatter(buy_signals.index, buy_signals['close'], 
+                       marker='^', color='green', s=100, label='Buy Signal')
+            ax1.scatter(sell_signals.index, sell_signals['close'], 
+                       marker='v', color='red', s=100, label='Sell Signal')
+
+            legend_gap += 0.09
+            
         # Add second y-axis for cumu_PnL
         ax1_2 = ax1.twinx()
         ax1_2.plot(data.index, data['cumu_PnL'], label='Cumu PnL', color='orange')
         ax1_2.set_ylabel('Cumu PnL')
-        ax1_2.legend(loc='upper left', bbox_to_anchor=(0, 0.94))
+        ax1_2.legend(loc='upper left', bbox_to_anchor=(0, 0.94-legend_gap))
+
+        # the signal mark on the cumu_PnL chart
+        # if 'signals' in data.columns:
+        #     buy_signals = data[data['signals'] == 1]
+        #     sell_signals = data[data['signals'] == -1]
+
+        #     # Mark buy and sell signals on the cumu PnL chart
+        #     ax1_2.scatter(buy_signals.index, buy_signals['cumu_PnL'], marker='^', color='blue', label='Buy Signal')
+        #     ax1_2.scatter(sell_signals.index, sell_signals['cumu_PnL'], marker='v', color='red', label='Sell Signal')
+        #     ax1_2.legend(loc='upper left', bbox_to_anchor=(0, 0.94))
 
         ax1.set_title(file_path.replace('.png', ''))
         ax1.grid(True)
@@ -49,7 +83,7 @@ class StatisticChart():
             f"TF: {data['Trading Fee'].iloc[0]}\n"
             f"TC: {data['Trade Count'].iloc[0]}"
         )
-        ax1.text(0.01, 0.85, info_text, transform=ax1.transAxes, fontsize=10, verticalalignment='top', horizontalalignment='center', ha='left', bbox=dict(facecolor='white', alpha=0.5))
+        ax1.text(0.01, 0.85-legend_gap, info_text, transform=ax1.transAxes, fontsize=10, verticalalignment='top', horizontalalignment='center', ha='left', bbox=dict(facecolor='white', alpha=0.5))
 
         ax1.set_xlabel('Index')
         ax1.set_ylabel('Close Price')

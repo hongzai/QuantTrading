@@ -39,6 +39,8 @@ class ThresholdOptimization():
     upper_threshold_col = 'upper_threshold'
     model_processor = None
     alpha_processor = None
+    split_heatmap = False
+    show_trades_in_chart = False
     filter_start_time = None            # To filter data based on start date (E.g: '2024-01-01 12:00:00')
     filter_end_time = None              # To filter data based on end date (E.g: '2024-01-01 12:00:00')
 
@@ -56,6 +58,7 @@ class ThresholdOptimization():
                  enable_alpha_analysis: bool=False,
                  enable_alpha_analysis_confirmation: bool=False,
                  split_heatmap: bool=False,
+                 show_trades_in_chart: bool=False,
                  filter_start_time: str=None, filter_end_time: str=None,
                  export_file_name: str="SR_Heatmap"):
         self.rolling_windows = rolling_windows
@@ -70,6 +73,7 @@ class ThresholdOptimization():
         self.model = model
         self.trading_fee = trading_fee
         self.split_heatmap = split_heatmap
+        self.show_trades_in_chart = show_trades_in_chart
         
         # Prepare folder
         coin_name = self.coin if self.coin is not None else ""
@@ -96,7 +100,7 @@ class ThresholdOptimization():
         # Statistic
         self.heatmap = StatisticHeatmap(rolling_windows, diff_thresholds)
         self.top_equity_curves = StatisticTopEquityCurves(rolling_windows, diff_thresholds)
-        self.statistic_chart = StatisticChart(rolling_windows, diff_thresholds)
+        self.statistic_chart = StatisticChart(rolling_windows, diff_thresholds, show_trades_in_chart)
         
     def run(self):
         # Logging
@@ -124,14 +128,14 @@ class ThresholdOptimization():
                     current_simulation+=1
 
                     # Running simulation
-                    [sharpe_ratio, mdd, cumu_pnl, sortino_ratio, calmar_ratio, data] = self.run_backtest(self.data[original_columns], rolling_window, diff_threshold)
-                    print(f"[{self.__class__.__name__}] Running [{current_simulation}/{total_simulation}] (RW={rolling_window}, DT={diff_threshold}) SR: {sharpe_ratio}, MDD: {mdd}, cumu_pnl: {cumu_pnl}")
+                    [sharpe_ratio, mdd, cumu_pnl, sortino_ratio, calmar_ratio, trade_count, data] = self.run_backtest(self.data[original_columns], rolling_window, diff_threshold)
+                    print(f"[{self.__class__.__name__}] Running [{current_simulation}/{total_simulation}] (RW={rolling_window}, DT={diff_threshold}) SR: {sharpe_ratio}, MDD: {mdd}, cumu_pnl: {cumu_pnl}, Trades: {trade_count}")
                     
                     # Update heatmap statistic
                     self.heatmap.update_statistic(rolling_window, diff_threshold, sharpe_ratio, mdd, cumu_pnl, calmar_ratio, sortino_ratio)
 
                     # Update top equity curves statistic
-                    self.top_equity_curves.update_statistic(f"RW: {rolling_window}, DT: {diff_threshold} (SR: {round(sharpe_ratio, 2)}, MDD: {round(mdd, 2)}, CR: {round(cumu_pnl, 2)})", 
+                    self.top_equity_curves.update_statistic(f"RW: {rolling_window}, DT: {diff_threshold} (SR: {round(sharpe_ratio, 2)}, MDD: {round(mdd, 2)}, CR: {round(cumu_pnl, 2)}, TC: {trade_count})", 
                                                             sharpe_ratio,
                                                             data)
                     
@@ -162,7 +166,6 @@ class ThresholdOptimization():
         # Export the best simulation
         if best_data is not None and len(self.export_file_name) > 0:
             file_name = f"{self.export_file_name}_best_{best_rolling_window}_{best_diff_threshold}"
-
             csv_file_path = os.path.join(self.output_folder, f"{file_name}.csv")
             best_data.to_csv(csv_file_path, index=False)
             print(f"[{self.__class__.__name__}] Saving BEST simulation csv to '{csv_file_path}'")
@@ -170,8 +173,7 @@ class ThresholdOptimization():
             chart_file_path = os.path.join(self.output_folder, f"{file_name}.png")
             self.statistic_chart.export_chart(chart_file_path, self.alpha_column_name, best_data)
             print(f"[{self.__class__.__name__}] Saving BEST simulation chart to '{chart_file_path}'")
-            
-
+    
     '''
     To run backtest
     '''
@@ -186,7 +188,9 @@ class ThresholdOptimization():
         data.loc[rolling_window_start_loc:, 'position'] = self.trading_strategy_processor.run(data[rolling_window_start_loc:], new_alpha_column_name, self.lower_threshold_col, self.upper_threshold_col)
         
         # Run backtest
-        return BacktestProcessor(self.time_frame, rolling_window, diff_threshold, self.trading_strategy.name, self.trading_fee).run(data, rolling_window_start_loc)
+        backtest_results = BacktestProcessor(self.time_frame, rolling_window, diff_threshold, self.trading_strategy.name, self.trading_fee).run(data, rolling_window_start_loc)
+        
+        return [*backtest_results]
 
 
     # ----- Begin Helper -----
@@ -199,30 +203,82 @@ class ThresholdOptimization():
                 raise ValueError("One of the data sources and candle have different number of rows")
 
     def merge_data(self, data_sources: Dict[str, pd.DataFrame], data_candle: pd.DataFrame) -> pd.DataFrame:
-        self.convert_start_time_column(data_candle)
-        merged_data = data_candle.copy()[["start_time", "close"]]
-        
-        # To filter data based on start time
-        if (self.filter_start_time is not None):
-            merged_data = merged_data[merged_data['start_time'] >= pd.Timestamp(self.filter_start_time)]
+        """ Merge data sources, ensure time format is unified """
+        try:
+            # First convert candle data time format
+            self.convert_start_time_column(data_candle)
+            merged_data = data_candle.copy()[["start_time", "close"]]
             
-        if (self.filter_end_time is not None):
-            merged_data = merged_data[merged_data['start_time'] <= pd.Timestamp(self.filter_end_time)]
-        
-        # Loop alpha data sources and merge
-        for alpha_name, df in data_sources.items():
-            self.convert_start_time_column(df)
-            merged_data = pd.merge(merged_data, df, on='start_time', how='inner')
+            # Filter time range
+            if (self.filter_start_time is not None):
+                filter_start = pd.to_datetime(self.filter_start_time)
+                merged_data = merged_data[merged_data['start_time'] >= filter_start]
+                
+            if (self.filter_end_time is not None):
+                filter_end = pd.to_datetime(self.filter_end_time)
+                merged_data = merged_data[merged_data['start_time'] <= filter_end]
             
-            if len(merged_data) != len(data_candle):
-                print(f"[{self.__class__.__name__}] !!! Warning: Alpha {alpha_name} and candle have different number of rows. [Candle:{len(data_candle)}, Merged: {len(merged_data)}] !!!")
-        
-        return merged_data
+            # Convert and merge each data source
+            for alpha_name, df in data_sources.items():
+                df_copy = df.copy()  # Create a copy to avoid modifying the original data
+                self.convert_start_time_column(df_copy)
+                merged_data = pd.merge(merged_data, df_copy, on='start_time', how='inner')
+                
+                if len(merged_data) != len(data_candle):
+                    print(f"[{self.__class__.__name__}] !!! Warning: Alpha {alpha_name} and candle have different number of rows.")
+                    print(f"[{self.__class__.__name__}] Candle rows: {len(data_candle)}")
+                    print(f"[{self.__class__.__name__}] Merged rows: {len(merged_data)}")
+                    print(f"[{self.__class__.__name__}] Please check if there are missing timestamps or mismatched data.")
+            
+            return merged_data
+            
+        except Exception as e:
+            print(f"[{self.__class__.__name__}] Error merging data: {str(e)}")
+            raise e
 
     def convert_start_time_column(self, df: pd.DataFrame):
-        # Convert 'start_time' to datetime
-        if df['start_time'].dtype == 'int64':
-            df['start_time'] = pd.to_datetime(df['start_time'], unit='ms')
-        else:
-            df['start_time'] = pd.to_datetime(df['start_time'])
+        """change time format, support multiple input formats, output as YYYY-MM-DD HH:MM:SS"""
+        try:
+            # If already datetime format, return directly
+            if pd.api.types.is_datetime64_any_dtype(df['start_time']):
+                return
+            
+            # If timestamp format (milliseconds)
+            if df['start_time'].dtype == 'int64':
+                df['start_time'] = pd.to_datetime(df['start_time'], unit='ms')
+                return
+            
+            # Try to parse string format automatically
+            try:
+                df['start_time'] = pd.to_datetime(df['start_time'])
+                return
+            except:
+                pass
+            
+            date_formats = [
+                '%d-%m-%Y %H:%M:%S',  # DD-MM-YYYY HH:MM:SS
+                '%Y-%m-%d %H:%M:%S',  # YYYY-MM-DD HH:MM:SS
+                '%m-%d-%Y %H:%M:%S',  # MM-DD-YYYY HH:MM:SS
+                '%Y/%m/%d %H:%M:%S',  # YYYY/MM/DD HH:MM:SS
+                '%d/%m/%Y %H:%M:%S',  # DD/MM/YYYY HH:MM:SS
+                '%m/%d/%Y %H:%M:%S',  # MM/DD/YYYY HH:MM:SS
+            ]
+            
+            for date_format in date_formats:
+                try:
+                    df['start_time'] = pd.to_datetime(df['start_time'], format=date_format)
+                    print(f"[{self.__class__.__name__}] Successfully parsed dates using format: {date_format}")
+                    return
+                except:
+                    continue
+            
+            # If all formats fail, raise an exception
+            raise ValueError(f"[{self.__class__.__name__}] Unable to parse date format. Please ensure dates are in one of the following formats:\n" + 
+                            "\n".join(date_formats))
+                        
+        except Exception as e:
+            print(f"[{self.__class__.__name__}] Error converting start_time: {str(e)}")
+            print(f"[{self.__class__.__name__}] Sample values from start_time column:")
+            print(df['start_time'].head())
+            raise e
     # ----- End Helper -----
