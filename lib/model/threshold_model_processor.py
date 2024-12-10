@@ -141,17 +141,6 @@ class ThresholdModelProcessor:
             
             return column_name
 
-        elif self.model == ThresholdModelEnum.BOLLINGER_REVERSE:
-            bb_column_name = f'{column_name}-bb'
-            data[bb_column_name] = self.calculate_ma(data, column_name, rolling_window)
-            
-            std = data[column_name].rolling(window=rolling_window).std()
-            
-            data[lower_threshold_col] = data[bb_column_name] + (std * diff_threshold)
-            data[upper_threshold_col] = data[bb_column_name] - (std * diff_threshold)
-            
-            return column_name
-
         elif self.model == ThresholdModelEnum.EMA_BOLLINGER:
             bb_column_name = f'{column_name}-ema-bb'
             data[bb_column_name] = self.calculate_ema(data, column_name, rolling_window)
@@ -166,21 +155,6 @@ class ThresholdModelProcessor:
             
             return column_name
 
-        elif self.model == ThresholdModelEnum.EMA_BOLLINGER_REVERSE:
-            bb_column_name = f'{column_name}-ema-bb'
-            data[bb_column_name] = self.calculate_ema(data, column_name, rolling_window)
-            
-            # calculate standard deviation using EMA
-            squared_diff = (data[column_name] - data[bb_column_name]) ** 2
-            squared_diff_df = pd.DataFrame(squared_diff, columns=[squared_diff.name])
-            ema_std = np.sqrt(self.calculate_ema(squared_diff_df, squared_diff.name, rolling_window))
-                
-            # reverse thresholds
-            data[lower_threshold_col] = data[bb_column_name] + (ema_std * diff_threshold)
-            data[upper_threshold_col] = data[bb_column_name] - (ema_std * diff_threshold)
-            
-            return column_name
-        
         elif self.model == ThresholdModelEnum.DOUBLE_BOLLINGER:
             ma_column_name = f'{column_name}-ma'
             data[ma_column_name] = self.calculate_ma(data, column_name, rolling_window)

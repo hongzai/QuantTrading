@@ -16,15 +16,14 @@ if __name__ == "__main__":
     3. EMA Crossing             = ThresholdModelEnum.EMA                -and-   diff_thresholds with 0
     4. EMA Band                 = ThresholdModelEnum.EMA                -and-   diff_thresholds with any value other than 0
     5. Bollinger Band           = ThresholdModelEnum.BOLLINGER          -and-   diff_thresholds with any value other than 0
-    6. Bollinger Reverse        = ThresholdModelEnum.BOLLINGER_REVERSE  -and-   diff_thresholds with any value other than 0
-    7. Double Bollinger         = ThresholdModelEnum.DOUBLE_BOLLINGER   -and-   diff_thresholds with any value other than 0
-    8. ZSCORE                   = ThresholdModelEnum.ZSCORE             -and-   diff_thresholds
-    9. MINMAX                   = ThresholdModelEnum.MINMAX             -and-   diff_thresholds between -1 to 1
-    10. Diff From MA            = ThresholdModelEnum.MA_DIFF            -and-   diff_thresholds
-    11. Diff From EMA           = ThresholdModelEnum.EMA_DIFF           -and-   diff_thresholds
-    12. ROBUST                  = ThresholdModelEnum.ROBUST             -and-   diff_thresholds
-    13. RSI                     = ThresholdModelEnum.RSI                -and-   diff_thresholds (lower_threshold=diff_thresholds, upper_threshold=100-diff_threshold) 
-    14. Linear regression band  = ThresholdModelEnum.LINEAR_REGRESSION  -and-   diff_thresholds
+    6. Double Bollinger         = ThresholdModelEnum.DOUBLE_BOLLINGER   -and-   diff_thresholds with any value other than 0
+    7. ZSCORE                   = ThresholdModelEnum.ZSCORE             -and-   diff_thresholds
+    8. MINMAX                   = ThresholdModelEnum.MINMAX             -and-   diff_thresholds between -1 to 1
+    9. Diff From MA             = ThresholdModelEnum.MA_DIFF            -and-   diff_thresholds
+    10. Diff From EMA           = ThresholdModelEnum.EMA_DIFF           -and-   diff_thresholds
+    11. ROBUST                  = ThresholdModelEnum.ROBUST             -and-   diff_thresholds
+    12. RSI                     = ThresholdModelEnum.RSI                -and-   diff_thresholds (lower_threshold=diff_thresholds, upper_threshold=100-diff_threshold) 
+    13. Linear regression band  = ThresholdModelEnum.LINEAR_REGRESSION  -and-   diff_thresholds
     '''
     # --- 1. Define Parameters ---
     coins = ["BTC"]
