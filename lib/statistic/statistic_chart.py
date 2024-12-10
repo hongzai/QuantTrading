@@ -7,9 +7,10 @@ import os
 This class is used to generate chart
 '''
 class StatisticChart():
-    def __init__(self, rolling_windows: list, diff_thresholds: list):
+    def __init__(self, rolling_windows: list, diff_thresholds: list, show_trades_in_chart: bool = False):
         self.rolling_windows = rolling_windows
         self.diff_thresholds = diff_thresholds
+        self.show_trades_in_chart = show_trades_in_chart
         
     def export_chart(self, file_path: str, alpha_column_name: str, data: pd.DataFrame):
         # --- Process data ---
@@ -23,12 +24,8 @@ class StatisticChart():
             data[col] = pd.to_numeric(data[col], errors='coerce')
 
         # --- Try to load signals data ---
-        signals_dir = os.path.join(os.path.dirname(file_path), 'signals')
-        signals_file = os.path.join(signals_dir, os.path.basename(file_path).replace('.png', '_signals.pkl'))
-        
-        if os.path.exists(signals_file):
+        if self.show_trades_in_chart:
             try:
-                signals_data = pd.read_pickle(signals_file)
                 data['signals'] = data['position'].diff().fillna(0)
                 data.loc[data['signals'] > 0, 'signals'] = 1    # long buy signal
                 data.loc[data['signals'] < 0, 'signals'] = -1   # short sell signal
@@ -44,6 +41,8 @@ class StatisticChart():
         ax1.set_ylabel('Close Price')
         ax1.legend(loc='upper left')
 
+        legend_gap = 0
+        
         # mark the buy and sell signals on the price line
         if 'signals' in data.columns:
             buy_signals = data[data['signals'] == 1]
@@ -53,15 +52,14 @@ class StatisticChart():
                        marker='^', color='green', s=100, label='Buy Signal')
             ax1.scatter(sell_signals.index, sell_signals['close'], 
                        marker='v', color='red', s=100, label='Sell Signal')
-            
-            handles, labels = ax1.get_legend_handles_labels()
-            ax1.legend(handles, labels, loc='upper left')
 
+            legend_gap += 0.09
+            
         # Add second y-axis for cumu_PnL
         ax1_2 = ax1.twinx()
         ax1_2.plot(data.index, data['cumu_PnL'], label='Cumu PnL', color='orange')
         ax1_2.set_ylabel('Cumu PnL')
-        ax1_2.legend(loc='upper left', bbox_to_anchor=(0, 0.94))
+        ax1_2.legend(loc='upper left', bbox_to_anchor=(0, 0.94-legend_gap))
 
         # the signal mark on the cumu_PnL chart
         # if 'signals' in data.columns:
@@ -85,7 +83,7 @@ class StatisticChart():
             f"TF: {data['Trading Fee'].iloc[0]}\n"
             f"TC: {data['Trade Count'].iloc[0]}"
         )
-        ax1.text(0.01, 0.85, info_text, transform=ax1.transAxes, fontsize=10, verticalalignment='top', horizontalalignment='center', ha='left', bbox=dict(facecolor='white', alpha=0.5))
+        ax1.text(0.01, 0.85-legend_gap, info_text, transform=ax1.transAxes, fontsize=10, verticalalignment='top', horizontalalignment='center', ha='left', bbox=dict(facecolor='white', alpha=0.5))
 
         ax1.set_xlabel('Index')
         ax1.set_ylabel('Close Price')

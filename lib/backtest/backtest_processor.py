@@ -102,6 +102,7 @@ class BacktestProcessor:
         mdd = data['drawdown'].min()
         cumu_pnl = data['cumu_PnL'].iloc[-1]
         calmar_ratio = abs(annualisedAverageReturn / mdd) if mdd != 0 else np.inf
+        trade_count = data['trade'].sum()
 
         # Statistics
         data.loc[0, ''] = np.nan
@@ -110,7 +111,7 @@ class BacktestProcessor:
         data.loc[0, 'Trading Strategy'] = self.trading_strategy_name
         data.loc[0, 'Trading Fee'] = self.trading_fee
         data.loc[0, ' '] = np.nan
-        data.loc[0, 'Trade Count'] = data['trade'].sum()
+        data.loc[0, 'Trade Count'] = trade_count
         data.loc[0, 'ADR'] = average_daily_returns
         data.loc[0, 'MDD'] = mdd
         data.loc[0, 'AR'] = annualisedAverageReturn
@@ -119,7 +120,7 @@ class BacktestProcessor:
         data.loc[0, 'Sortino'] = sortino_ratio 
         data.loc[0, 'Calmar'] = calmar_ratio 
 
-        return [sharpe_ratio, mdd, cumu_pnl, sortino_ratio, calmar_ratio, data]
+        return [sharpe_ratio, mdd, cumu_pnl, sortino_ratio, calmar_ratio, trade_count, data]
     
     
     

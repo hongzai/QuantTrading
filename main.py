@@ -15,29 +15,29 @@ if __name__ == "__main__":
     2. SMA Band                 = ThresholdModelEnum.MA                 -and-   diff_thresholds with any value other than 0
     3. EMA Crossing             = ThresholdModelEnum.EMA                -and-   diff_thresholds with 0
     4. EMA Band                 = ThresholdModelEnum.EMA                -and-   diff_thresholds with any value other than 0
-    5. SMA Reverse              = ThresholdModelEnum.MA_REVERSE         -and-   diff_thresholds with any value other than 0
-    6. EMA Reverse              = ThresholdModelEnum.EMA_REVERSE        -and-   diff_thresholds with any value other than 0
-    7. Bollinger Band           = ThresholdModelEnum.BOLLINGER          -and-   diff_thresholds with any value other than 0
-    8. Bollinger Reverse        = ThresholdModelEnum.BOLLINGER_REVERSE  -and-   diff_thresholds with any value other than 0
-    9. Double Bollinger         = ThresholdModelEnum.DOUBLE_BOLLINGER   -and-   diff_thresholds with any value other than 0
-    10. ZSCORE                   = ThresholdModelEnum.ZSCORE             -and-   diff_thresholds
-    11. MINMAX                   = ThresholdModelEnum.MINMAX             -and-   diff_thresholds between -1 to 1
-    12. Diff From MA             = ThresholdModelEnum.MA_DIFF            -and-   diff_thresholds
-    13. Diff From EMA            = ThresholdModelEnum.EMA_DIFF           -and-   diff_thresholds
-    14. ROBUST                   = ThresholdModelEnum.ROBUST             -and-   diff_thresholds
-    15. RSI                     = ThresholdModelEnum.RSI                -and-   diff_thresholds (lower_threshold=diff_thresholds, upper_threshold=100-diff_threshold) 
-    16. Linear regression band  = ThresholdModelEnum.LINEAR_REGRESSION  -and-   diff_thresholds
+    5. Bollinger Band           = ThresholdModelEnum.BOLLINGER          -and-   diff_thresholds with any value other than 0
+    6. Bollinger Reverse        = ThresholdModelEnum.BOLLINGER_REVERSE  -and-   diff_thresholds with any value other than 0
+    7. Double Bollinger         = ThresholdModelEnum.DOUBLE_BOLLINGER   -and-   diff_thresholds with any value other than 0
+    8. ZSCORE                   = ThresholdModelEnum.ZSCORE             -and-   diff_thresholds
+    9. MINMAX                   = ThresholdModelEnum.MINMAX             -and-   diff_thresholds between -1 to 1
+    10. Diff From MA            = ThresholdModelEnum.MA_DIFF            -and-   diff_thresholds
+    11. Diff From EMA           = ThresholdModelEnum.EMA_DIFF           -and-   diff_thresholds
+    12. ROBUST                  = ThresholdModelEnum.ROBUST             -and-   diff_thresholds
+    13. RSI                     = ThresholdModelEnum.RSI                -and-   diff_thresholds (lower_threshold=diff_thresholds, upper_threshold=100-diff_threshold) 
+    14. Linear regression band  = ThresholdModelEnum.LINEAR_REGRESSION  -and-   diff_thresholds
     '''
     # --- 1. Define Parameters ---
     coins = ["BTC"]
     time_frames = ["1h"]
-    models = [ThresholdModelEnum.DOUBLE_BOLLINGER]
-    trading_strategies = [ThresholdTradingStrategyEnum.DOUBLE_BOLLINGER] 
+    models = [ThresholdModelEnum.ZSCORE]
+    trading_strategies = [ThresholdTradingStrategyEnum.LONG_SHORT_OUTRANGE_MOMEMTUM] 
     rolling_windows = list(range(100, 520, 20))
     diff_thresholds = [round(num, 2) for num in np.arange(0.2, 5.2, 0.2).tolist()]
     trading_fee = 0.00055
     enable_alpha_analysis = False                        # To generate data analysis report (Take the first 'rolling_windows' as reference)
     enable_alpha_analysis_confirmation = False          # To prompt confirmation before starting optimization
+    split_heatmap = False
+    show_trades_in_chart = True
     
     # --- 2. Define Data Source ---
     alpha_data_sources = {
@@ -100,7 +100,8 @@ if __name__ == "__main__":
                         trading_fee=trading_fee,
                         #filter_start_time='2023-01-01 12:00:00',
                         #filter_end_time='2024-01-01 12:00:00',
-                        split_heatmap=False,
+                        split_heatmap=split_heatmap,
+                        show_trades_in_chart=show_trades_in_chart,
                         output_folder=f"{parent_dir}/output",
                         export_file_name=f"{model.name}_{alpha_config.new_alpha_column_name}_{coin.upper()}_{time_frame}")
 

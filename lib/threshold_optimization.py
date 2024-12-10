@@ -39,6 +39,8 @@ class ThresholdOptimization():
     upper_threshold_col = 'upper_threshold'
     model_processor = None
     alpha_processor = None
+    split_heatmap = False
+    show_trades_in_chart = False
     filter_start_time = None            # To filter data based on start date (E.g: '2024-01-01 12:00:00')
     filter_end_time = None              # To filter data based on end date (E.g: '2024-01-01 12:00:00')
 
@@ -56,6 +58,7 @@ class ThresholdOptimization():
                  enable_alpha_analysis: bool=False,
                  enable_alpha_analysis_confirmation: bool=False,
                  split_heatmap: bool=False,
+                 show_trades_in_chart: bool=False,
                  filter_start_time: str=None, filter_end_time: str=None,
                  export_file_name: str="SR_Heatmap"):
         self.rolling_windows = rolling_windows
@@ -70,6 +73,7 @@ class ThresholdOptimization():
         self.model = model
         self.trading_fee = trading_fee
         self.split_heatmap = split_heatmap
+        self.show_trades_in_chart = show_trades_in_chart
         
         # Prepare folder
         coin_name = self.coin if self.coin is not None else ""
@@ -96,7 +100,7 @@ class ThresholdOptimization():
         # Statistic
         self.heatmap = StatisticHeatmap(rolling_windows, diff_thresholds)
         self.top_equity_curves = StatisticTopEquityCurves(rolling_windows, diff_thresholds)
-        self.statistic_chart = StatisticChart(rolling_windows, diff_thresholds)
+        self.statistic_chart = StatisticChart(rolling_windows, diff_thresholds, show_trades_in_chart)
         
     def run(self):
         # Logging
@@ -124,14 +128,14 @@ class ThresholdOptimization():
                     current_simulation+=1
 
                     # Running simulation
-                    [sharpe_ratio, mdd, cumu_pnl, sortino_ratio, calmar_ratio, data, trade_count] = self.run_backtest(self.data[original_columns], rolling_window, diff_threshold)
+                    [sharpe_ratio, mdd, cumu_pnl, sortino_ratio, calmar_ratio, trade_count, data] = self.run_backtest(self.data[original_columns], rolling_window, diff_threshold)
                     print(f"[{self.__class__.__name__}] Running [{current_simulation}/{total_simulation}] (RW={rolling_window}, DT={diff_threshold}) SR: {sharpe_ratio}, MDD: {mdd}, cumu_pnl: {cumu_pnl}, Trades: {trade_count}")
                     
                     # Update heatmap statistic
                     self.heatmap.update_statistic(rolling_window, diff_threshold, sharpe_ratio, mdd, cumu_pnl, calmar_ratio, sortino_ratio)
 
                     # Update top equity curves statistic
-                    self.top_equity_curves.update_statistic(f"RW: {rolling_window}, DT: {diff_threshold} (SR: {round(sharpe_ratio, 2)}, MDD: {round(mdd, 2)}, CR: {round(cumu_pnl, 2)})", 
+                    self.top_equity_curves.update_statistic(f"RW: {rolling_window}, DT: {diff_threshold} (SR: {round(sharpe_ratio, 2)}, MDD: {round(mdd, 2)}, CR: {round(cumu_pnl, 2)}, TC: {trade_count})", 
                                                             sharpe_ratio,
                                                             data)
                     
@@ -161,9 +165,6 @@ class ThresholdOptimization():
             
         # Export the best simulation
         if best_data is not None and len(self.export_file_name) > 0:
-            # Save signals data for the best parameters
-            self._save_best_signals(best_data, best_rolling_window, best_diff_threshold)
-            
             file_name = f"{self.export_file_name}_best_{best_rolling_window}_{best_diff_threshold}"
             csv_file_path = os.path.join(self.output_folder, f"{file_name}.csv")
             best_data.to_csv(csv_file_path, index=False)
@@ -173,28 +174,6 @@ class ThresholdOptimization():
             self.statistic_chart.export_chart(chart_file_path, self.alpha_column_name, best_data)
             print(f"[{self.__class__.__name__}] Saving BEST simulation chart to '{chart_file_path}'")
     
-    def _save_best_signals(self, best_data: pd.DataFrame, rolling_window: int, diff_threshold: float):
-        """Save the signals data for the best parameters"""
-        best_data['signals'] = best_data['position'].diff().fillna(0)
-        best_data.loc[best_data['signals'] > 0, 'signals'] = 1    # long buy signal
-        best_data.loc[best_data['signals'] < 0, 'signals'] = -1   # short sell signal
-        
-        signals_data = {
-            'rolling_window': rolling_window,
-            'diff_threshold': diff_threshold,
-            'model': self.model.value,
-            'trading_strategy': self.trading_strategy.value,
-            'signals': best_data[['signals']].copy()
-        }
-        
-        # Create signals folder
-        signals_dir = os.path.join(self.output_folder, 'signals')
-        os.makedirs(signals_dir, exist_ok=True)
-    
-        signals_file = os.path.join(signals_dir, f"{self.export_file_name}_signals.pkl")
-        pd.to_pickle(signals_data, signals_file)
-        print(f"[{self.__class__.__name__}] Saving best signals data to '{signals_file}'")
-
     '''
     To run backtest
     '''
@@ -211,15 +190,7 @@ class ThresholdOptimization():
         # Run backtest
         backtest_results = BacktestProcessor(self.time_frame, rolling_window, diff_threshold, self.trading_strategy.name, self.trading_fee).run(data, rolling_window_start_loc)
         
-        # calculate only absolute trade count
-        # method 1: count the times changed from 0 to non-0
-        position_series = data['position']
-        # trade_count = ((position_series != 0) & (position_series.shift(1) == 0)).sum()
-        
-        # method 2: count the absolute value changes of position, and divide by 2 (because open and close count as one complete trade)
-        trade_count = (data['position'].diff() != 0).sum() // 2
-        
-        return [*backtest_results, trade_count]
+        return [*backtest_results]
 
 
     # ----- Begin Helper -----

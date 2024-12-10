@@ -52,7 +52,7 @@ class StatisticTopEquityCurves():
         # create the table data
         table_data = []
         for sharpe_ratio, params, data in sorted_portfolios:
-            trade_count = (data['position'].diff() != 0).sum() // 2
+            trade_count = data['Trade Count'].iloc[0]
             mdd = data['drawdown'].min()
             cr = data['cumu_PnL'].iloc[-1]
             

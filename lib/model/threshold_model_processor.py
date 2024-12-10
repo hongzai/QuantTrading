@@ -25,18 +25,6 @@ class ThresholdModelProcessor:
             
             return column_name
         
-        elif self.model == ThresholdModelEnum.MA_REVERSE:
-            # Calculate sma for specific column
-            # Create upperbound and lowerbound based on sma and diff_threshold
-            # Use ORIGINAL column as alpha against threshold for reverse signals
-            ma_column_name = f'{column_name}-ma'
-            data[ma_column_name] = self.calculate_ma(data, column_name, rolling_window)
-            
-            # Use vectorized function to calculate thresholds
-            data[lower_threshold_col], data[upper_threshold_col] = self.calculate_thresholds(data[ma_column_name], diff_threshold)
-            
-            return column_name
-
         if self.model == ThresholdModelEnum.EMA:
             # Calculate sma for specific column
             # Create upperbound and lowerbound based on sma and diff_threshold
@@ -91,18 +79,6 @@ class ThresholdModelProcessor:
 
             return ema_diff_column_name
         
-        elif self.model == ThresholdModelEnum.EMA_REVERSE:
-            # Calculate ema for specific column
-            # Create upperbound and lowerbound based on ema and diff_threshold
-            # Use ORIGINAL column as alpha against threshold for reverse signals
-            ema_column_name = f'{column_name}-ema'
-            data[ema_column_name] = self.calculate_ema(data, column_name, rolling_window)
-            
-            # Use vectorized function to calculate thresholds
-            data[lower_threshold_col], data[upper_threshold_col] = self.calculate_thresholds(data[ema_column_name], diff_threshold)
-            
-            return column_name
-
         elif self.model == ThresholdModelEnum.MINMAX:
             # Min-Max Normalization
             minmax_column_name = f'{column_name}-minmax'
