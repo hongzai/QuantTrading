@@ -22,17 +22,57 @@ class ThresholdTradingStrategyProcessor:
             position[data[alpha_col] > data[upper_threshold_col]] = 1
             position[data[alpha_col] < data[lower_threshold_col]] = -1
         # > up threshold = short | < low threshold = long | in range = no position    
-        elif self.trading_strategy == ThresholdTradingStrategyEnum.LONG_SHORT_OUTRANGE_MOMEMTUM_REVERSE:
-            position[data[alpha_col] > data[upper_threshold_col]] = -1
-            position[data[alpha_col] < data[lower_threshold_col]] = 1
-        # > up threshold = short | < low threshold = long | in range = no position    
         elif self.trading_strategy == ThresholdTradingStrategyEnum.LONG_SHORT_INRANGE_MEAN_REVERSION:
             position[data[alpha_col] > data[upper_threshold_col]] = -1
             position[data[alpha_col] < data[lower_threshold_col]] = 1
-        # > up threshold = long | < low threshold = short | in range = no position    
-        elif self.trading_strategy == ThresholdTradingStrategyEnum.LONG_SHORT_INRANGE_MEAN_REVERSION_REVERSE:
-            position[data[alpha_col] > data[upper_threshold_col]] = 1
-            position[data[alpha_col] < data[lower_threshold_col]] = -1
+        # > up threshold = long | < low threshold = short | in range = hold previous position    
+        elif self.trading_strategy == ThresholdTradingStrategyEnum.LONG_SHORT_OUTRANGE_MOMEMTUM_HOLD:
+            upper_mask = data[alpha_col] >= data[upper_threshold_col]
+            lower_mask = data[alpha_col] <= data[lower_threshold_col]
+
+            # Initialize positions with default values
+            position = np.zeros(len(data))
+
+            # Set positions based on conditions
+            position[upper_mask] = 1
+            position[lower_mask] = -1
+
+            # Fill the remaining positions (where neither condition is met)
+            # using forward fill to maintain previous position
+            mask = ~(upper_mask | lower_mask)
+            if mask.any():
+                # Get indices where we need to forward fill
+                fill_indices = np.where(mask)[0]
+                
+                # For each gap, propagate the last known position
+                for start_idx in fill_indices:
+                    if start_idx > 0:  # Skip first element
+                        position[start_idx] = position[start_idx - 1]
+
+        # > up threshold = short | < low threshold = long | in range = hold previous position    
+        elif self.trading_strategy == ThresholdTradingStrategyEnum.LONG_SHORT_INRANGE_MEAN_REVERSION_HOLD:
+            upper_mask = data[alpha_col] >= data[upper_threshold_col]
+            lower_mask = data[alpha_col] <= data[lower_threshold_col]
+
+            # Initialize positions with default values
+            position = np.zeros(len(data))
+
+            # Set positions based on conditions
+            position[upper_mask] = -1
+            position[lower_mask] = 1
+
+            # Fill the remaining positions (where neither condition is met)
+            # using forward fill to maintain previous position
+            mask = ~(upper_mask | lower_mask)
+            if mask.any():
+                # Get indices where we need to forward fill
+                fill_indices = np.where(mask)[0]
+                
+                # For each gap, propagate the last known position
+                for start_idx in fill_indices:
+                    if start_idx > 0:  # Skip first element
+                        position[start_idx] = position[start_idx - 1]
+
         # > up threshold = long | < low threshold = short | in range = keep previous position    
         elif self.trading_strategy == ThresholdTradingStrategyEnum.LONG_SHORT_OPPOSITE:
             for i in range(0, len(data)):
@@ -48,6 +88,7 @@ class ThresholdTradingStrategyProcessor:
                     position[i] = 1
                 else:
                     position[i] = previous_position
+                    
         # > up threshold = short | < low threshold = long | in range = keep previous position    
         elif self.trading_strategy == ThresholdTradingStrategyEnum.LONG_SHORT_OPPOSITE_REVERSE:
             for i in range(0, len(data)):
