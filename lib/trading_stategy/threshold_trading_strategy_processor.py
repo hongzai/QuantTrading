@@ -73,38 +73,6 @@ class ThresholdTradingStrategyProcessor:
                     if start_idx > 0:  # Skip first element
                         position[start_idx] = position[start_idx - 1]
 
-        # > up threshold = long | < low threshold = short | in range = keep previous position    
-        elif self.trading_strategy == ThresholdTradingStrategyEnum.LONG_SHORT_OPPOSITE:
-            for i in range(0, len(data)):
-                previous_position = position[i-1]
-                alpha_value = data[alpha_col].iloc[i]
-                lower_threshold = data[lower_threshold_col].iloc[i]
-                upper_threshold = data[upper_threshold_col].iloc[i]
-                if (previous_position == -1 and alpha_value <= lower_threshold) or (previous_position == 1 and alpha_value > upper_threshold):
-                    position[i] = previous_position
-                elif alpha_value < lower_threshold:
-                    position[i] = -1
-                elif alpha_value > upper_threshold:
-                    position[i] = 1
-                else:
-                    position[i] = previous_position
-                    
-        # > up threshold = short | < low threshold = long | in range = keep previous position    
-        elif self.trading_strategy == ThresholdTradingStrategyEnum.LONG_SHORT_OPPOSITE_REVERSE:
-            for i in range(0, len(data)):
-                previous_position = position[i-1]
-                alpha_value = data[alpha_col].iloc[i]
-                lower_threshold = data[lower_threshold_col].iloc[i]
-                upper_threshold = data[upper_threshold_col].iloc[i]
-                if (previous_position == 1 and alpha_value <= lower_threshold) or (previous_position == -1 and alpha_value > upper_threshold):
-                    position[i] = previous_position
-                elif alpha_value < lower_threshold:
-                    position[i] = 1
-                elif alpha_value > upper_threshold:
-                    position[i] = -1
-                else:
-                    position[i] = previous_position
-
         elif self.trading_strategy == ThresholdTradingStrategyEnum.DOUBLE_BOLLINGER:
             for i in range(0, len(data)):
                 alpha_value = data[alpha_col].iloc[i]
